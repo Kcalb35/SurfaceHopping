@@ -3,4 +3,10 @@ project(FSSH)
 
 set(CMAKE_CXX_STANDARD 14)
 
-add_executable(FSSH main.cpp)
+include_directories(include)
+
+add_subdirectory(src)
+
+add_executable(${PROJECT_NAME} main.cpp include/gslExtra.h)
+
+target_link_libraries(${PROJECT_NAME} FSSHLib)
