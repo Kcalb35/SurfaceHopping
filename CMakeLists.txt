@@ -11,9 +11,9 @@ endif ()
 project(FSSH)
 include(CheckCXXCompilerFlag)
 CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
-if(COMPILER_SUPPORTS_CXX11)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-endif()
+if (COMPILER_SUPPORTS_CXX11)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+endif ()
 
 find_library(GSL libgsl)
 # find_package(GSL REQUIRED COMPONENTS gsl gslcblas)
@@ -36,13 +36,9 @@ add_library(FSSHLib STATIC
 target_include_directories(FSSHLib
         PUBLIC
         ${PROJECT_SOURCE_DIR}/include
-        )
+        ${PROJECT_SOURCE_DIR}/lib/easyloggingpp/src)
 
 add_executable(${PROJECT_NAME} ${SOURCES})
-
-target_include_directories(${PROJECT_NAME}
-        PRIVATE
-        ${PROJECT_SOURCE_DIR}/lib/easyloggingpp/src)
 
 target_link_libraries(${PROJECT_NAME}
         PRIVATE
