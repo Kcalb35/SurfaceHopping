@@ -17,3 +17,7 @@ void copy_complex_vector_to_real_vector(const gsl_vector_complex *src, gsl_vecto
 void gsl_extra_multiply(gsl_matrix* m1,gsl_matrix* m2,gsl_matrix* dst){
     gsl_blas_dgemm(CblasNoTrans,CblasNoTrans,1.0,m1,m2,0,dst);
 }
+
+void gsl_extra_multiply(gsl_matrix_complex *m1,gsl_matrix_complex *m2, gsl_matrix_complex *dst){
+    gsl_blas_zgemm(CblasNoTrans,CblasNoTrans,gsl_complex{1,0},m1,m2,gsl_complex{0,0},dst);
+}

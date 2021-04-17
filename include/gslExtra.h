@@ -9,5 +9,6 @@
 
 void copy_complex_vector_to_real_vector(const gsl_vector_complex *src, gsl_vector *dst);
 void gsl_extra_multiply(gsl_matrix* m1,gsl_matrix* m2,gsl_matrix* dst);
+void gsl_extra_multiply(gsl_matrix_complex *m1,gsl_matrix_complex *m2, gsl_matrix_complex *dst);
 
 #endif //FSSH_GSLEXTRA_H
