@@ -7,6 +7,9 @@
 
 #include <gsl/gsl_eigen.h>
 #include "gsl/gsl_matrix.h"
+#include <string>
+
+#define LOG_INTERVAL (200000)
 
 struct Atom {
     double x = -10;
@@ -15,18 +18,28 @@ struct Atom {
     double velocity{};
     double potential_energy{};
     int state{};
-    gsl_vector_complex *expand{};
-    gsl_complex population{};
+
+    void log(const std::string &s) const;
 };
 
 
-void diagonalize(void (*f)(gsl_matrix *, double), double x, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2,
+enum FinalPosition {
+    lower_transmission,
+    upper_transmission,
+    lower_reflection,
+    upper_reflection
+};
+
+
+typedef void (*H_matrix_function)(gsl_matrix *, double);
+
+void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2,
                  gsl_eigen_nonsymmv_workspace *wb);
 
 
 void calculate_density_matrix(gsl_matrix_complex *density_matrix, gsl_vector_complex *expand);
 
-double NAC(void (*f)(gsl_matrix *, double), double x, gsl_vector *s1, gsl_vector *s2, double e1, double e2);
+double NAC(H_matrix_function f, double x, gsl_vector *s1, gsl_vector *s2, double e1, double e2);
 
 void model_1(gsl_matrix *m, double x);
 
@@ -39,5 +52,8 @@ void model_2_derive(gsl_matrix *m, double x);
 void model_3(gsl_matrix *m, double x);
 
 void model_3_derive(gsl_matrix *m, double x);
+
+FinalPosition run_single_trajectory(H_matrix_function hamitonian_f, H_matrix_function d_hamitonian_f, int start_state,
+                                    double start_momenta, double dt, bool debug);
 
 #endif //FSSH_FSSHMATH_H

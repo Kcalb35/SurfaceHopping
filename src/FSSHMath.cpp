@@ -3,14 +3,22 @@
 //
 #include "FSSHMath.h"
 #include "gslExtra.h"
-#include "cmath"
+#include "easylogging++.h"
+#include <cmath>
+#include <random>
 #include "gsl/gsl_matrix.h"
 #include "gsl/gsl_eigen.h"
+#include "gsl/gsl_complex_math.h"
 
-void diagonalize(void (*f)(gsl_matrix*,double), double x, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2,
+const char *FinalPositionName[] = {
+        "lower_transmission",
+        "upper_transmission",
+        "lower_reflection",
+        "upper_reflection"
+};
+
+void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2,
                  gsl_eigen_nonsymmv_workspace *wb) {
-    auto hamitonian= gsl_matrix_alloc(2,2);
-    f(hamitonian,x);
     auto *e_value = gsl_vector_complex_alloc(2);
     auto *e_vector = gsl_matrix_complex_alloc(2, 2);
     auto *tmp_complex = gsl_vector_complex_alloc(2);
@@ -23,7 +31,6 @@ void diagonalize(void (*f)(gsl_matrix*,double), double x, double &e1, double &e2
     gsl_matrix_complex_get_col(tmp_complex, e_vector, 1);
     copy_complex_vector_to_real_vector(tmp_complex, s2);
 
-    gsl_matrix_free(hamitonian);
     gsl_vector_complex_free(e_value);
     gsl_matrix_complex_free(e_vector);
     gsl_vector_complex_free(tmp_complex);
@@ -38,9 +45,9 @@ void calculate_density_matrix(gsl_matrix_complex *density_matrix, gsl_vector_com
 }
 
 
-double NAC(void (*f)(gsl_matrix*,double), double x, gsl_vector *s1, gsl_vector *s2, const double e1, const double e2) {
-    auto dh = gsl_matrix_alloc(2,2);
-    f(dh,x);
+double NAC(H_matrix_function f, double x, gsl_vector *s1, gsl_vector *s2, const double e1, const double e2) {
+    auto dh = gsl_matrix_alloc(2, 2);
+    f(dh, x);
     auto nac = gsl_matrix_alloc(1, 1);
     gsl_matrix_view t1 = gsl_matrix_view_vector(s1, 1, 2);
     gsl_matrix_view t2 = gsl_matrix_view_vector(s2, 2, 1);
@@ -125,3 +132,159 @@ void model_3_derive(gsl_matrix *m, double x) {
     gsl_matrix_set(m, 1, 0, d12);
     gsl_matrix_set(m, 0, 1, d12);
 }
+
+FinalPosition
+run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_state, double start_momenta,
+                      double dt, bool debug) {
+    // pre-allocate space
+    auto wb = gsl_eigen_nonsymmv_alloc(2);
+    auto nac = gsl_matrix_alloc(2, 2);
+    gsl_matrix_set_all(nac, 0);
+    auto hamitonian = gsl_matrix_alloc(2, 2);
+    auto t1 = gsl_vector_alloc(2);
+    auto t2 = gsl_vector_alloc(2);
+    auto density_matrix = gsl_matrix_complex_alloc(2, 2);
+    auto density_matrix_grad = gsl_matrix_complex_alloc(2, 2);
+
+    double e[] = {0, 0};
+    int log_cnt = 0;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> distrib(0, 1.0);
+    FinalPosition final;
+
+    // initial an atom
+    Atom atom;
+    h_f(hamitonian, atom.x);
+    diagonalize(hamitonian, e[0], e[1], t1, t2, wb);
+    atom.state = start_state;
+    atom.potential_energy = e[atom.state - 1];
+    atom.velocity = start_momenta / atom.mass;
+    atom.kinetic_energy = atom.mass * atom.velocity * atom.velocity / 2;
+
+    double c = start_state == 1 ? 1 : 0;
+    auto expand = gsl_vector_complex_alloc(2);
+    gsl_vector_complex_set(expand, 0, gsl_complex{c, 0});
+    gsl_vector_complex_set(expand, 1, gsl_complex{1 - c, 0});
+    calculate_density_matrix(density_matrix, expand);
+    atom.log("start");
+
+    // start dynamic evolve
+    while (atom.x <= 10 && atom.x >= -10) {
+        // move the atom
+        double x = atom.x + atom.velocity * dt;
+        // calculate hamitonian and diagonalize it
+        h_f(hamitonian, atom.x);
+        diagonalize(hamitonian, e[0], e[1], t1, t2, wb);
+
+        // if potential energy surface change
+        int target = atom.state;
+        if (fabs(e[2 - target] - atom.potential_energy) < fabs(e[target - 1] - atom.potential_energy)) {
+            target = 3 - target;
+        }
+
+        // update potential and kinetic energy, update velocity
+        double d_energy = e[target - 1] - atom.potential_energy;
+        if (d_energy < atom.kinetic_energy) {
+            atom.x = x;
+            atom.potential_energy = e[target - 1];
+            atom.kinetic_energy -= d_energy;
+            atom.velocity = sgn(atom.velocity) * sqrt(2 * atom.kinetic_energy / atom.mass);
+        } else {
+            atom.velocity = -atom.velocity;
+        }
+        atom.state = target;
+
+
+        // calculate nac
+        double nac_x = NAC(d_h_f, atom.x, t1, t2, e[0], e[1]);
+        gsl_matrix_set(nac, 0, 1, nac_x);
+        gsl_matrix_set(nac, 1, 0, -nac_x);
+
+        // update density matrix
+        auto grad_complex = gsl_complex{0, 0};
+        for (int i = 0; i < 2; ++i) {
+            for (int j = 0; j < 2; ++j) {
+                for (int k = 0; k < 2; ++k) {
+                    grad_complex = gsl_complex_add(grad_complex,
+                                                   gsl_complex_mul(gsl_matrix_complex_get(density_matrix, k, j),
+                                                                   gsl_complex{gsl_matrix_get(hamitonian, i, k),
+                                                                               -gsl_matrix_get(nac, i, k)}));
+                    grad_complex = gsl_complex_sub(grad_complex,
+                                                   gsl_complex_mul(gsl_matrix_complex_get(density_matrix, i, k),
+                                                                   gsl_complex{gsl_matrix_get(hamitonian, k, j),
+                                                                               -gsl_matrix_get(nac, k, j)}));
+                }
+                grad_complex = gsl_complex_div_imag(grad_complex, 1);
+                gsl_matrix_complex_set(density_matrix_grad, i, j, grad_complex);
+            }
+        }
+        gsl_matrix_complex_scale(density_matrix_grad, gsl_complex{dt, 0});
+        gsl_matrix_complex_add(density_matrix, density_matrix_grad);
+
+        // calculate switching probability
+        int k = atom.state - 1;
+        gsl_complex tmp_complex;
+        tmp_complex = gsl_matrix_complex_get(density_matrix, 1 - k, k);
+        tmp_complex = gsl_complex_conjugate(tmp_complex);
+        double b = 2 * GSL_IMAG(gsl_complex_mul_real(tmp_complex, gsl_matrix_get(hamitonian, 1 - k, k))) -
+                   2 * GSL_REAL(gsl_complex_mul_real(tmp_complex, gsl_matrix_get(nac, 1 - k, k)));
+        double prob = dt * b / GSL_REAL(gsl_matrix_complex_get(density_matrix, k, k));
+        if (prob < 0) prob = 0;
+
+        // generate random number
+        double zeta = distrib(gen);
+        // decide whether to switch
+        if (zeta < prob) {
+            // switch from atom.state to 3-atom.state or k -> 1-k
+            double de = e[1 - k] - e[k];
+            if (de <= atom.kinetic_energy) {
+                // allowed
+                atom.log("jump_before");
+                atom.kinetic_energy -= de;
+                atom.potential_energy = e[1 - k];
+                atom.velocity = (sgn(atom.velocity)) * sqrt(2 * atom.kinetic_energy / atom.mass);
+                atom.state = 2 - k;
+                if (debug)
+                    LOG(INFO) << "jump " << zeta << '/' << prob;
+                atom.log("jump_after");
+            }
+        }
+
+        if (debug)
+            if (++log_cnt % LOG_INTERVAL == 0) {
+                log_cnt = 0;
+                atom.log("move");
+            }
+    }
+
+    // judge final state
+    atom.log("end");
+    if (atom.x > 0) {
+        if (atom.potential_energy > 0)
+            final = FinalPosition::upper_transmission;
+        else
+            final = FinalPosition::lower_transmission;
+    } else {
+        if (atom.potential_energy < 0)
+            final = FinalPosition::lower_reflection;
+        else
+            final = FinalPosition::upper_reflection;
+    }
+    LOG(INFO) << "final " << FinalPositionName[final];
+
+    gsl_vector_free(t1);
+    gsl_vector_free(t2);
+    gsl_matrix_free(hamitonian);
+    gsl_matrix_complex_free(density_matrix);
+    gsl_matrix_complex_free(density_matrix_grad);
+    gsl_eigen_nonsymmv_free(wb);
+
+    return final;
+}
+
+void Atom::log(const std::string &s) const {
+    LOG(INFO) << s << " Ep:" << potential_energy << " Ek:" << kinetic_energy << " x:" << x << " state:" << state
+              << " v:" << velocity;
+}
+
