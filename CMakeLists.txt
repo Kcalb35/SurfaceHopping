@@ -15,15 +15,6 @@ if (COMPILER_SUPPORTS_CXX11)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 endif ()
 
-find_library(GSL libgsl)
-# find_package(GSL REQUIRED COMPONENTS gsl gslcblas)
-
-# if (GSL_FOUND)
-#     message("GSL FOUND")
-# else ()
-#     message(FATAL_ERROR "Cannot found GSL")
-# endif ()
-
 set(SOURCES
         main.cpp
         lib/easyloggingpp/src/easylogging++.cc)
@@ -42,4 +33,4 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_link_libraries(${PROJECT_NAME}
         PRIVATE
-        FSSHLib gsl gslcblas -static)
+        FSSHLib gsl.a gslcblas.a pthread)

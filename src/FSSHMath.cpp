@@ -9,6 +9,8 @@
 #include "gsl/gsl_matrix.h"
 #include "gsl/gsl_eigen.h"
 #include "gsl/gsl_complex_math.h"
+#include <mutex>
+
 
 const char *FinalPositionName[] = {
         "lower_transmission",
@@ -16,6 +18,8 @@ const char *FinalPositionName[] = {
         "lower_reflection",
         "upper_reflection"
 };
+
+std::mutex m;
 
 void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2,
                  gsl_eigen_nonsymmv_workspace *wb) {
@@ -136,6 +140,9 @@ void model_3_derive(gsl_matrix *m, double x) {
 FinalPosition
 run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_state, double start_momenta,
                       double dt, bool debug) {
+    // prepare a lock
+    std::unique_lock<std::mutex> l(m, std::defer_lock);
+
     // pre-allocate space
     auto wb = gsl_eigen_nonsymmv_alloc(2);
     auto nac = gsl_matrix_alloc(2, 2);
@@ -167,7 +174,9 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
     gsl_vector_complex_set(expand, 0, gsl_complex{c, 0});
     gsl_vector_complex_set(expand, 1, gsl_complex{1 - c, 0});
     calculate_density_matrix(density_matrix, expand);
+    l.lock();
     atom.log("start");
+    l.unlock();
 
     // start dynamic evolve
     while (atom.x <= 10 && atom.x >= -10) {
@@ -240,26 +249,36 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
             double de = e[1 - k] - e[k];
             if (de <= atom.kinetic_energy) {
                 // allowed
-                atom.log("jump_before");
+                l.lock();
+                if (debug)
+                    atom.log("jump_before");
+                l.unlock();
                 atom.kinetic_energy -= de;
                 atom.potential_energy = e[1 - k];
                 atom.velocity = (sgn(atom.velocity)) * sqrt(2 * atom.kinetic_energy / atom.mass);
                 atom.state = 2 - k;
-                if (debug)
+                l.lock();
+                if (debug) {
                     LOG(INFO) << "jump " << zeta << '/' << prob;
-                atom.log("jump_after");
+                    atom.log("jump_after");
+                }
+                l.unlock();
             }
         }
 
         if (debug)
             if (++log_cnt % LOG_INTERVAL == 0) {
                 log_cnt = 0;
+                l.lock();
                 atom.log("move");
+                l.unlock();
             }
     }
 
     // judge final state
+    l.lock();
     atom.log("end");
+    l.unlock();
     if (atom.x > 0) {
         if (atom.potential_energy > 0)
             final = FinalPosition::upper_transmission;
@@ -271,7 +290,9 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
         else
             final = FinalPosition::upper_reflection;
     }
+    l.lock();
     LOG(INFO) << "final " << FinalPositionName[final];
+    l.unlock();
 
     gsl_vector_free(t1);
     gsl_vector_free(t2);
