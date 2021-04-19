@@ -79,7 +79,11 @@ int main(int argc, char **argv) {
 
     }
 
-    LOG(INFO) << "lower trans " << 1.0 *result[0] / cnt;
-    LOG(INFO) << "upper trans " << 1.0 * result[1] / cnt;
-    LOG(INFO) << "lower reflect " << 1.0 *result[2] / cnt;
+    // log settings again and result
+    LOG(INFO) << "simulate_setting start_state:" << start_state << " model:" << model_index << " momenta:" << momenta
+              << " dt:" << dt << " times:" << cnt;
+    LOG(INFO) << "runtime_setting debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
+    LOG(INFO) << "lower trans " << 100.0 * result[0] / cnt << "%";
+    LOG(INFO) << "upper trans " << 100.0 * result[1] / cnt << "%";
+    LOG(INFO) << "lower reflect " << 100.0 * result[2] / cnt << "%";
 }

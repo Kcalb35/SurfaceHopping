@@ -162,17 +162,16 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
 
     // initial an atom
     Atom atom;
+    atom.state = start_state;
     h_f(hamitonian, atom.x);
     diagonalize(hamitonian, e[0], e[1], t1, t2, wb);
-    atom.state = start_state;
-    atom.potential_energy = e[atom.state - 1];
+    atom.potential_energy = e[start_state - 1];
     atom.velocity = start_momenta / atom.mass;
     atom.kinetic_energy = atom.mass * atom.velocity * atom.velocity / 2;
 
-    double c = start_state == 1 ? 1 : 0;
     auto expand = gsl_vector_complex_alloc(2);
-    gsl_vector_complex_set(expand, 0, gsl_complex{c, 0});
-    gsl_vector_complex_set(expand, 1, gsl_complex{1 - c, 0});
+    gsl_vector_complex_set(expand, start_state - 1, gsl_complex{1, 0});
+    gsl_vector_complex_set(expand, 2 - start_state, gsl_complex{0, 0});
     calculate_density_matrix(density_matrix, expand);
     l.lock();
     atom.log("start");
@@ -211,18 +210,20 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
         gsl_matrix_set(nac, 1, 0, -nac_x);
 
         // update density matrix
-        auto grad_complex = gsl_complex{0, 0};
         for (int i = 0; i < 2; ++i) {
             for (int j = 0; j < 2; ++j) {
+                gsl_complex grad_complex = gsl_complex{0, 0};
                 for (int k = 0; k < 2; ++k) {
                     grad_complex = gsl_complex_add(grad_complex,
                                                    gsl_complex_mul(gsl_matrix_complex_get(density_matrix, k, j),
                                                                    gsl_complex{gsl_matrix_get(hamitonian, i, k),
-                                                                               -gsl_matrix_get(nac, i, k)}));
+                                                                               -atom.velocity *
+                                                                               gsl_matrix_get(nac, i, k)}));
                     grad_complex = gsl_complex_sub(grad_complex,
                                                    gsl_complex_mul(gsl_matrix_complex_get(density_matrix, i, k),
                                                                    gsl_complex{gsl_matrix_get(hamitonian, k, j),
-                                                                               -gsl_matrix_get(nac, k, j)}));
+                                                                               -atom.velocity *
+                                                                               gsl_matrix_get(nac, k, j)}));
                 }
                 grad_complex = gsl_complex_div_imag(grad_complex, 1);
                 gsl_matrix_complex_set(density_matrix_grad, i, j, grad_complex);
@@ -237,7 +238,7 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
         tmp_complex = gsl_matrix_complex_get(density_matrix, 1 - k, k);
         tmp_complex = gsl_complex_conjugate(tmp_complex);
         double b = 2 * GSL_IMAG(gsl_complex_mul_real(tmp_complex, gsl_matrix_get(hamitonian, 1 - k, k))) -
-                   2 * GSL_REAL(gsl_complex_mul_real(tmp_complex, gsl_matrix_get(nac, 1 - k, k)));
+                   2 * GSL_REAL(gsl_complex_mul_real(tmp_complex, atom.velocity * gsl_matrix_get(nac, 1 - k, k)));
         double prob = dt * b / GSL_REAL(gsl_matrix_complex_get(density_matrix, k, k));
         if (prob < 0) prob = 0;
 
@@ -249,20 +250,21 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
             double de = e[1 - k] - e[k];
             if (de <= atom.kinetic_energy) {
                 // allowed
-                l.lock();
-                if (debug)
+                if (debug) {
+                    l.lock();
                     atom.log("jump_before");
-                l.unlock();
+                    l.unlock();
+                }
                 atom.kinetic_energy -= de;
                 atom.potential_energy = e[1 - k];
                 atom.velocity = (sgn(atom.velocity)) * sqrt(2 * atom.kinetic_energy / atom.mass);
                 atom.state = 2 - k;
-                l.lock();
                 if (debug) {
+                    l.lock();
                     LOG(INFO) << "jump " << zeta << '/' << prob;
                     atom.log("jump_after");
+                    l.unlock();
                 }
-                l.unlock();
             }
         }
 
@@ -271,6 +273,8 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
                 log_cnt = 0;
                 l.lock();
                 atom.log("move");
+                log_matrix(density_matrix,2,2,"density_matrix");
+                LOG(INFO) << zeta << '/' << prob;
                 l.unlock();
             }
     }
@@ -292,6 +296,7 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
     }
     l.lock();
     LOG(INFO) << "final " << FinalPositionName[final];
+    log_matrix(density_matrix, 2, 2, "density matrix");
     l.unlock();
 
     gsl_vector_free(t1);
