@@ -1,7 +1,11 @@
+# dirs
 .idea
 build*
 bin/*
 lib/*
 data/*
+
+# files
 *.log
 FSSH
+*.dat
