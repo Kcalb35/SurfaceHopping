@@ -10,7 +10,6 @@
 #include <string>
 #include <functional>
 
-#define LOG_INTERVAL (100)
 
 struct Atom {
     double x = -10;
@@ -35,9 +34,12 @@ enum FinalPosition {
 void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2,
                  gsl_eigen_symmv_workspace *wb);
 
+double integral(gsl_vector *left, gsl_matrix *m, gsl_vector *right);
+
 void calculate_density_matrix(gsl_matrix_complex *density_matrix, gsl_vector_complex *expand);
 
-double NAC(const std::function<void(gsl_matrix *,double)>& f, double x, gsl_vector *s1, gsl_vector *s2, double e1, double e2);
+double
+NAC(const std::function<void(gsl_matrix *, double)> &f, double x, gsl_vector *s1, gsl_vector *s2, double e1, double e2);
 
 void model_1(gsl_matrix *m, double x);
 
@@ -52,7 +54,8 @@ void model_3(gsl_matrix *m, double x);
 void model_3_derive(gsl_matrix *m, double x);
 
 FinalPosition
-run_single_trajectory(const std::function<void(gsl_matrix*,double)>& hamitonian_f, const std::function<void(gsl_matrix *,double)>& d_hamitonian_f,
+run_single_trajectory(const std::function<void(gsl_matrix *, double)> &hamitonian_f,
+                      const std::function<void(gsl_matrix *, double)> &d_hamitonian_f,
                       int start_state, double start_momenta, double dt, bool debug);
 
 #endif //FSSH_FSSHMATH_H

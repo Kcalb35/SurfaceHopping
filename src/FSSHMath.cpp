@@ -25,6 +25,7 @@ void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1,
     auto *e_value = gsl_vector_alloc(2);
     auto *e_vector = gsl_matrix_alloc(2, 2);
     gsl_eigen_symmv(hamitonian, e_value, e_vector, wb);
+    gsl_eigen_symmv_sort(e_value, e_vector, GSL_EIGEN_SORT_VAL_ASC);
 
     e1 = gsl_vector_get(e_value, 0);
     e2 = gsl_vector_get(e_value, 1);
@@ -33,6 +34,22 @@ void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1,
 
     gsl_vector_free(e_value);
     gsl_matrix_free(e_vector);
+}
+
+double integral(gsl_vector *left, gsl_matrix *m, gsl_vector *right) {
+    auto tmp = gsl_matrix_alloc(right->size, 1);
+    auto result_matrix = gsl_matrix_alloc(1, 1);
+    auto lm = gsl_matrix_view_vector(left, 1, left->size);
+    auto rm = gsl_matrix_view_vector(right, right->size, 1);
+
+    gsl_extra_multiply(m, &rm.matrix, tmp);
+    gsl_extra_multiply(&lm.matrix, tmp, result_matrix);
+
+    double result = gsl_matrix_get(result_matrix, 0, 0);
+
+    gsl_matrix_free(tmp);
+    gsl_matrix_free(result_matrix);
+    return result;
 }
 
 
@@ -143,8 +160,7 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
     auto nac = gsl_matrix_alloc(2, 2);
     gsl_matrix_set_all(nac, 0);
     auto hamitonian = gsl_matrix_alloc(2, 2);
-    auto t1 = gsl_vector_alloc(2);
-    auto t2 = gsl_vector_alloc(2);
+    gsl_vector *t[] = {gsl_vector_alloc(2), gsl_vector_alloc(2)};
     auto density_matrix = gsl_matrix_complex_alloc(2, 2);
     auto density_matrix_grad = gsl_matrix_complex_alloc(2, 2);
     // space for calculate force
@@ -152,9 +168,7 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
     gsl_vector *tmp_t[] = {gsl_vector_alloc(2), gsl_vector_alloc(2)};
 
     double e[] = {0, 0};
-    double tmp_e[] = {0, 0};
     int log_cnt = 0;
-    int absolute_state[] = {0, 1};
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> distrib(0, 1.0);
@@ -164,17 +178,14 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
     Atom atom;
     atom.state = start_state;
     h_f(hamitonian, atom.x);
-    diagonalize(hamitonian, e[0], e[1], t1, t2, wb);
-    if (e[1] < e[0]) {
-        absolute_state[0] = 1;
-        absolute_state[1] = 0;
-    } else {
-        absolute_state[0] = 0;
-        absolute_state[1] = 1;
-    }
-    atom.potential_energy = e[absolute_state[atom.state]];
+    diagonalize(hamitonian, e[0], e[1], t[0], t[1], wb);
+
+    atom.potential_energy = e[atom.state];
     atom.velocity = start_momenta / atom.mass;
     atom.kinetic_energy = atom.mass * atom.velocity * atom.velocity / 2;
+
+    d_h_f(tmp_hamitonian, atom.x);
+    double acceleration = -integral(t[atom.state], tmp_hamitonian, t[atom.state]) / atom.mass;
 
     auto expand = gsl_vector_complex_alloc(2);
     gsl_vector_complex_set(expand, start_state, gsl_complex{1, 0});
@@ -184,39 +195,31 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
 
     // start dynamic evolve
     while (atom.x <= 10 && atom.x >= -10) {
-        // calculate force
-        d_h_f(tmp_hamitonian, atom.x);
-        diagonalize(tmp_hamitonian, tmp_e[0], tmp_e[1], tmp_t[0], tmp_t[1], wb);
-        double acceleration = -tmp_e[absolute_state[atom.state]] / atom.mass;
-        // move the atom
-        atom.x += atom.velocity * dt + 0.5 * acceleration * dt * dt;
-        atom.velocity += acceleration * dt;
-        atom.kinetic_energy = 0.5 * atom.mass * atom.velocity * atom.velocity;
+        // move the atom using verlet method
+        atom.velocity += 0.5 * dt * acceleration;
+        atom.x += dt * atom.velocity;
         // update potential energy
         h_f(hamitonian, atom.x);
         diagonalize(hamitonian, e[0], e[1], tmp_t[0], tmp_t[1], wb);
-        if (e[1] < e[0]) {
-            absolute_state[0] = 1;
-            absolute_state[1] = 0;
-        } else {
-            absolute_state[0] = 0;
-            absolute_state[1] = 1;
-        }
-        atom.potential_energy = e[absolute_state[atom.state]];
-        // wave function phase correction
-        if (gsl_vector_get(tmp_t[absolute_state[0]], 0) * gsl_vector_get(t1, 0) < 0 ||
-            gsl_vector_get(tmp_t[absolute_state[0]], 1) * gsl_vector_get(t1, 1) < 0)
-            gsl_vector_scale(tmp_t[absolute_state[0]], -1);
-        if (gsl_vector_get(tmp_t[absolute_state[1]], 0) * gsl_vector_get(t2, 0) < 0 ||
-            gsl_vector_get(tmp_t[absolute_state[1]], 1) * gsl_vector_get(t2, 1) < 0)
-            gsl_vector_scale(tmp_t[absolute_state[1]], -1);
 
-        gsl_vector_memcpy(t1, tmp_t[absolute_state[0]]);
-        gsl_vector_memcpy(t2, tmp_t[absolute_state[1]]);
+        atom.potential_energy = e[atom.state];
+        // calculate force
+        d_h_f(tmp_hamitonian, atom.x);
+        acceleration = -integral(tmp_t[atom.state], tmp_hamitonian, tmp_t[atom.state]) / atom.mass;
+        atom.velocity += 0.5 * dt * acceleration;
+        atom.kinetic_energy = 0.5 * atom.mass * atom.velocity * atom.velocity;
+
+        // wave function phase correction
+        for (int i = 0; i < 2; ++i) {
+            if (gsl_vector_get(tmp_t[i], 0) * gsl_vector_get(t[i], 0) < 0 ||
+                gsl_vector_get(tmp_t[i], 1) * gsl_vector_get(t[i], 1) < 0)
+                gsl_vector_scale(tmp_t[i], -1);
+            gsl_vector_memcpy(t[i], tmp_t[i]);
+        }
 
 
         // calculate nac
-        double nac_x = NAC(d_h_f, atom.x, t1, t2, e[absolute_state[0]], e[absolute_state[1]]);
+        double nac_x = NAC(d_h_f, atom.x, t[0], t[1], e[0], e[1]);
         gsl_matrix_set(nac, 0, 1, nac_x);
         gsl_matrix_set(nac, 1, 0, -nac_x);
 
@@ -258,12 +261,12 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
         // decide whether to switch
         if (zeta < prob) {
             // switch from atom.state to 3-atom.state or k -> 1-k
-            double de = e[absolute_state[1-k]] - e[absolute_state[k]];
+            double de = e[1 - k] - e[k];
             if (de <= atom.kinetic_energy) {
                 // allowed
                 if (debug) atom.log("jump_before");
                 atom.kinetic_energy -= de;
-                atom.potential_energy = e[absolute_state[1-k]];
+                atom.potential_energy = e[1 - k];
                 atom.velocity = (sgn(atom.velocity)) * sqrt(2 * atom.kinetic_energy / atom.mass);
                 atom.state = 1 - k;
                 if (debug) {
@@ -274,11 +277,11 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
         }
 
         if (debug)
-            if (++log_cnt % LOG_INTERVAL == 0) {
+            if (++log_cnt % int(10 / dt) == 0) {
                 log_cnt = 0;
                 atom.log("move");
-                log_matrix(density_matrix, 2, 2, "density_matrix");
-                LOG(INFO) << zeta << '/' << prob;
+//                log_matrix(density_matrix, 2, 2, "density_matrix");
+//                LOG(INFO) << zeta << '/' << prob;
             }
     }
 
@@ -297,11 +300,11 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
     }
     if (debug) {
         LOG(INFO) << "final " << FinalPositionName[final];
-        log_matrix(density_matrix, 2, 2, "density matrix");
+//        log_matrix(density_matrix, 2, 2, "density matrix");
     }
 
-    gsl_vector_free(t1);
-    gsl_vector_free(t2);
+    gsl_vector_free(t[0]);
+    gsl_vector_free(t[1]);
     gsl_vector_free(tmp_t[0]);
     gsl_vector_free(tmp_t[1]);
     gsl_matrix_free(hamitonian);
@@ -313,7 +316,7 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
 }
 
 void Atom::log(const std::string &s) const {
-    LOG(INFO) << s << " Ep:" << potential_energy << " Ek:" << kinetic_energy << " x:" << x << " state:" << state
-              << " v:" << velocity;
+    LOG(INFO) << s << " Ep:" << potential_energy << " Ek:" << kinetic_energy << " E:"
+              << potential_energy + kinetic_energy << " x:" << x << " state:" << state << " v:" << velocity;
 }
 
