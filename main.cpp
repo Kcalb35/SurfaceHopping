@@ -1,7 +1,6 @@
 #include "FSSHMath.h"
 #include "easylogging++.h"
 #include "CLI11.hpp"
-#include <mutex>
 #include <thread>
 #include "ThreadPool.h"
 
@@ -25,6 +24,7 @@ int main(int argc, char **argv) {
     bool debug_flag = false;
     int cores = 1;
     double serial_interval = 0;
+    double start = 1, end = 30;
     string path("serial.dat");
     app.add_option("-s", start_state, "start state (0,1)");
     app.add_option("-i", model_index, "model index (1,2,3)");
@@ -32,16 +32,18 @@ int main(int argc, char **argv) {
     app.add_option("-t", dt, "simulate interval");
     app.add_option("-c", cnt, "run times");
     app.add_flag("--debug", debug_flag, "whether to log debug info");
+    // multi-threading option
     app.add_option("--cores", cores, "how many threads to use(default=1)");
-    app.add_option("--serial", serial_interval,
-                   "enable it to carry out serial experiment by interval momenta, by default multi-threading");
+    // serial options
+    app.add_option("--serial", serial_interval, "enable it to carry out serial experiment by interval momenta");
+    app.add_option("--start", start, "start momenta");
+    app.add_option("--end", end, "end momenta");
     app.add_option("--path", path, "path to log serial experiment data");
     CLI11_PARSE(app, argc, argv);
     // if multi cores than no debug info
     if (cores > 1) debug_flag = false;
     ThreadPool pool(cores);
     queue<future<FinalPosition>> result_queue;
-    mutex m;
 
     function<void(gsl_matrix *, double)> h_f[3] = {model_1, model_2, model_3};
     function<void(gsl_matrix *, double)> d_h_f[3] = {model_1_derive, model_2_derive, model_3_derive};
@@ -73,10 +75,12 @@ int main(int argc, char **argv) {
         LOG(INFO) << "upper trans " << 100.0 * result[1] / cnt << "%";
         LOG(INFO) << "lower reflect " << 100.0 * result[2] / cnt << "%";
     } else {
+        LOG(INFO) << "serial_setting start:" << start << " end:" << end << " interval:" << serial_interval;
         ofstream fs;
         fs.open(path);
-        cnt = 2000;
-        for (double p = 1; p <= 30; p += serial_interval) {
+        if (cnt < 2000) cnt = 2000;
+        double p = start;
+        while (p <= end) {
             LOG(INFO) << "simulate_setting start_state:" << start_state << " model:" << model_index << " momenta:"
                       << p << " dt:" << dt << " times:" << cnt;
             int result[4] = {0, 0, 0, 0};
@@ -92,6 +96,7 @@ int main(int argc, char **argv) {
             }
             fs << p << ' ' << 1.0 * result[0] / cnt << ' ' << 1.0 * result[1] / cnt << ' ' << 1.0 * result[2] / cnt
                << ' ' << 1.0 * result[3] / cnt << endl;
+            p += serial_interval;
         }
         fs.close();
     }

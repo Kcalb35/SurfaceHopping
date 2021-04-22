@@ -15,22 +15,24 @@ if (COMPILER_SUPPORTS_CXX11)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 endif ()
 
-set(SOURCES
-        main.cpp
-        lib/easyloggingpp/src/easylogging++.cc)
+# target log lib
+add_library(log ${PROJECT_SOURCE_DIR}/lib/easyloggingpp/src/easylogging++.cc)
+target_include_directories(log PUBLIC ${PROJECT_SOURCE_DIR}/lib/easyloggingpp/src)
 
-
+# target FSSH lib
 add_library(FSSHLib STATIC
         src/FSSHMath.cpp
-        src/gslExtra.cpp
-        )
+        src/gslExtra.cpp)
 target_include_directories(FSSHLib
         PUBLIC
-        ${PROJECT_SOURCE_DIR}/include
-        ${PROJECT_SOURCE_DIR}/lib/easyloggingpp/src)
+        ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(FSSHLib PUBLIC gsl.a gslcblas.a log)
 
-add_executable(${PROJECT_NAME} ${SOURCES})
-
+# target executable
+add_executable(${PROJECT_NAME} main.cpp)
 target_link_libraries(${PROJECT_NAME}
-        PRIVATE
-        FSSHLib gsl.a gslcblas.a pthread)
+        PUBLIC
+        FSSHLib pthread)
+
+add_executable(surface ${PROJECT_SOURCE_DIR}/tests/energySurface.cpp)
+target_link_libraries(surface PUBLIC FSSHLib)

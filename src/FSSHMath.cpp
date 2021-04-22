@@ -284,7 +284,7 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
             if (++log_cnt % int(10 / dt) == 0) {
                 log_cnt = 0;
                 atom.log("move");
-                log_matrix(density_matrix, 2, 2, "density_matrix");
+//                log_matrix(density_matrix, 2, 2, "density_matrix");
 //                LOG(INFO) << zeta << '/' << prob;
             }
     }
@@ -292,12 +292,12 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
     // judge final state
     if (debug) atom.log("end");
     if (atom.x > 0) {
-        if (atom.potential_energy > 0)
+        if (atom.state==1)
             final = FinalPosition::upper_transmission;
         else
             final = FinalPosition::lower_transmission;
     } else {
-        if (atom.potential_energy < 0)
+        if (atom.state==1)
             final = FinalPosition::lower_reflection;
         else
             final = FinalPosition::upper_reflection;
