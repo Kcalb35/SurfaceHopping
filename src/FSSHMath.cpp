@@ -223,6 +223,11 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
         gsl_matrix_set(nac, 0, 1, nac_x);
         gsl_matrix_set(nac, 1, 0, -nac_x);
 
+        // calculate diagonalize hamitonian
+        gsl_matrix_set_all(tmp_hamitonian, 0);
+        gsl_matrix_set(tmp_hamitonian, 0, 0, e[0]);
+        gsl_matrix_set(tmp_hamitonian, 1, 1, e[1]);
+
         // update density matrix
         for (int i = 0; i < 2; ++i) {
             for (int j = 0; j < 2; ++j) {
@@ -230,12 +235,12 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
                 for (int k = 0; k < 2; ++k) {
                     grad_complex = gsl_complex_add(grad_complex,
                                                    gsl_complex_mul(gsl_matrix_complex_get(density_matrix, k, j),
-                                                                   gsl_complex{gsl_matrix_get(hamitonian, i, k),
+                                                                   gsl_complex{gsl_matrix_get(tmp_hamitonian, i, k),
                                                                                -atom.velocity *
                                                                                gsl_matrix_get(nac, i, k)}));
                     grad_complex = gsl_complex_sub(grad_complex,
                                                    gsl_complex_mul(gsl_matrix_complex_get(density_matrix, i, k),
-                                                                   gsl_complex{gsl_matrix_get(hamitonian, k, j),
+                                                                   gsl_complex{gsl_matrix_get(tmp_hamitonian, k, j),
                                                                                -atom.velocity *
                                                                                gsl_matrix_get(nac, k, j)}));
                 }
@@ -251,8 +256,7 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
         gsl_complex tmp_complex;
         tmp_complex = gsl_matrix_complex_get(density_matrix, 1 - k, k);
         tmp_complex = gsl_complex_conjugate(tmp_complex);
-        double b = 2 * GSL_IMAG(gsl_complex_mul_real(tmp_complex, gsl_matrix_get(hamitonian, 1 - k, k))) -
-                   2 * GSL_REAL(gsl_complex_mul_real(tmp_complex, atom.velocity * gsl_matrix_get(nac, 1 - k, k)));
+        double b = -2 * GSL_REAL(gsl_complex_mul_real(tmp_complex, atom.velocity * gsl_matrix_get(nac, 1 - k, k)));
         double prob = dt * b / GSL_REAL(gsl_matrix_complex_get(density_matrix, k, k));
         if (prob < 0) prob = 0;
 
@@ -280,7 +284,7 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
             if (++log_cnt % int(10 / dt) == 0) {
                 log_cnt = 0;
                 atom.log("move");
-//                log_matrix(density_matrix, 2, 2, "density_matrix");
+                log_matrix(density_matrix, 2, 2, "density_matrix");
 //                LOG(INFO) << zeta << '/' << prob;
             }
     }
