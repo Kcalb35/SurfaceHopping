@@ -74,6 +74,7 @@ int main(int argc, char **argv) {
         LOG(INFO) << "lower trans " << 100.0 * result[0] / cnt << "%";
         LOG(INFO) << "upper trans " << 100.0 * result[1] / cnt << "%";
         LOG(INFO) << "lower reflect " << 100.0 * result[2] / cnt << "%";
+        LOG(INFO) << "upper reflect " << 100.0 * result[3] / cnt << "%";
     } else {
         LOG(INFO) << "serial_setting start:" << start << " end:" << end << " interval:" << serial_interval;
         ofstream fs;
