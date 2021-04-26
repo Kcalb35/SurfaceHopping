@@ -298,9 +298,9 @@ run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
             final = FinalPosition::lower_transmission;
     } else {
         if (atom.state==1)
-            final = FinalPosition::lower_reflection;
-        else
             final = FinalPosition::upper_reflection;
+        else
+            final = FinalPosition::lower_reflection;
     }
     if (debug) {
         LOG(INFO) << "final " << FinalPositionName[final];
