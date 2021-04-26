@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
         }
 
         // log settings again and result
-        LOG(INFO) << "simulate_setting start_state:" << start_state << " model:" << model_index << " momenta:"
+        LOG(INFO) << "simulate_setting state:" << start_state << " model:" << model_index << " momenta:"
                   << momenta << " dt:" << dt << " times:" << cnt << " norm:" << (norm_flag ? "yes" : "no");
         LOG(INFO) << "runtime_setting debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
 
@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
             random_device rd;
             mt19937 gen(rd());
             normal_distribution<double> distribution(p, p / 20);
-            LOG(INFO) << "simulate_setting start_state:" << start_state << " model:" << model_index << " momenta:"
+            LOG(INFO) << "simulate_setting state:" << start_state << " model:" << model_index << " momenta:"
                       << p << " dt:" << dt << " times:" << cnt;
             int result[4] = {0, 0, 0, 0};
             for (int i = 0; i < cnt; ++i) {

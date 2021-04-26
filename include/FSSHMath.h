@@ -12,7 +12,7 @@
 
 
 struct Atom {
-    double x = -10;
+    double x{};
     double mass = 2000;
     double kinetic_energy{};
     double velocity{};
