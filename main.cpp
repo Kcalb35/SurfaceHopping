@@ -4,6 +4,7 @@
 #include <thread>
 #include "ThreadPool.h"
 #include <random>
+#include <ctime>
 
 INITIALIZE_EASYLOGGINGPP
 
@@ -61,15 +62,22 @@ int main(int argc, char **argv) {
     function<void(gsl_matrix *, double)> h_f[3] = {model_1, model_2, model_3};
     function<void(gsl_matrix *, double)> d_h_f[3] = {model_1_derive, model_2_derive, model_3_derive};
 
+
+    // add a clock
+    clock_t start_time;
+
+    // single momenta experiment
     if (app.got_subcommand(single)) {
         random_device rd;
         mt19937 gen(rd());
         normal_distribution<double> distribution(momenta, momenta / 10);
 
         // log start settings
-        LOG(INFO) << "simulate_setting start_state:" << start_state << " model:" << model_index << " momenta:"
+        LOG(INFO) << "simulate state:" << start_state << " model:" << model_index << " momenta:"
                   << momenta << " dt:" << dt << " times:" << cnt << " norm:" << (norm_flag ? "yes" : "no");
-        LOG(INFO) << "runtime_setting debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
+        LOG(INFO) << "runtime debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
+
+        start_time = clock();
 
         // start here
         int result[] = {0, 0, 0, 0};
@@ -88,18 +96,23 @@ int main(int argc, char **argv) {
             result[res] += 1;
         }
 
-        // log settings again and result
-        LOG(INFO) << "simulate_setting state:" << start_state << " model:" << model_index << " momenta:"
-                  << momenta << " dt:" << dt << " times:" << cnt << " norm:" << (norm_flag ? "yes" : "no");
-        LOG(INFO) << "runtime_setting debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
+        // if debug then log settings again and result
+        if (debug_flag) {
+            LOG(INFO) << "simulate state:" << start_state << " model:" << model_index << " momenta:"
+                      << momenta << " dt:" << dt << " times:" << cnt << " norm:" << (norm_flag ? "yes" : "no");
+            LOG(INFO) << "runtime debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
+        }
 
         LOG(INFO) << "lower trans " << 100.0 * result[0] / cnt << "%";
         LOG(INFO) << "upper trans " << 100.0 * result[1] / cnt << "%";
         LOG(INFO) << "lower reflect " << 100.0 * result[2] / cnt << "%";
         LOG(INFO) << "upper reflect " << 100.0 * result[3] / cnt << "%";
+        LOG(INFO) << "Total time:" << (clock() - start_time) / (double) CLOCKS_PER_SEC / 60 * cores << "min";
     } else if (app.got_subcommand(serial)) {
-        LOG(INFO) << "serial_setting start:" << start << " end:" << end << " interval:" << serial_interval
+        LOG(INFO) << "serial start:" << start << " end:" << end << " interval:" << serial_interval
                   << " norm:" << (norm_flag ? "yes" : "no");
+        LOG(INFO) << "runtime debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
+        start_time = clock();
         ofstream fs;
         fs.open(path);
         if (cnt < 2000) cnt = 2000;
@@ -108,7 +121,7 @@ int main(int argc, char **argv) {
             random_device rd;
             mt19937 gen(rd());
             normal_distribution<double> distribution(p, p / 20);
-            LOG(INFO) << "simulate_setting state:" << start_state << " model:" << model_index << " momenta:"
+            LOG(INFO) << "simulate state:" << start_state << " model:" << model_index << " momenta:"
                       << p << " dt:" << dt << " times:" << cnt;
             int result[4] = {0, 0, 0, 0};
             for (int i = 0; i < cnt; ++i) {
@@ -130,5 +143,6 @@ int main(int argc, char **argv) {
             p += serial_interval;
         }
         fs.close();
+        LOG(INFO) << "Total time:" << (clock() - start_time) / (double) CLOCKS_PER_SEC / 60 * cores << "min";
     }
 }
