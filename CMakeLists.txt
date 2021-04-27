@@ -36,3 +36,6 @@ target_link_libraries(${PROJECT_NAME}
 
 add_executable(surface ${PROJECT_SOURCE_DIR}/tests/energySurface.cpp)
 target_link_libraries(surface PUBLIC FSSHLib)
+
+add_executable(diagonal ${PROJECT_SOURCE_DIR}/tests/TestDiagonal.cpp)
+target_link_libraries(diagonal FSSHLib)

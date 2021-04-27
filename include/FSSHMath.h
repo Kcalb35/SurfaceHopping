@@ -8,7 +8,6 @@
 #include <gsl/gsl_eigen.h>
 #include "gsl/gsl_matrix.h"
 #include <string>
-#include <functional>
 
 
 struct Atom {
@@ -30,6 +29,8 @@ enum FinalPosition {
     upper_reflection
 };
 
+typedef void (*H_matrix_function)(gsl_matrix *, double);
+
 
 void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2,
                  gsl_eigen_symmv_workspace *wb);
@@ -39,7 +40,7 @@ double integral(gsl_vector *left, gsl_matrix *m, gsl_vector *right);
 void calculate_density_matrix(gsl_matrix_complex *density_matrix, gsl_vector_complex *expand);
 
 double
-NAC(const std::function<void(gsl_matrix *, double)> &f, double x, gsl_vector *s1, gsl_vector *s2, double e1, double e2);
+NAC(H_matrix_function f, double x, gsl_vector *s1, gsl_vector *s2, double e1, double e2);
 
 void model_1(gsl_matrix *m, double x);
 
@@ -54,8 +55,8 @@ void model_3(gsl_matrix *m, double x);
 void model_3_derive(gsl_matrix *m, double x);
 
 FinalPosition
-run_single_trajectory(const std::function<void(gsl_matrix *, double)> &hamitonian_f,
-                      const std::function<void(gsl_matrix *, double)> &d_hamitonian_f,
+run_single_trajectory(H_matrix_function hamitonian_f,
+                      H_matrix_function d_hamitonian_f,
                       int start_state, double start_momenta, double dt, bool debug);
 
 #endif //FSSH_FSSHMATH_H

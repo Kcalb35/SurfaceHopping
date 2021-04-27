@@ -4,12 +4,21 @@
 #include <thread>
 #include "ThreadPool.h"
 #include <random>
-#include <ctime>
 
 INITIALIZE_EASYLOGGINGPP
 
+
 using namespace std;
 
+string format_time(long sec) {
+    if (sec < 60) {
+        return to_string(sec) + "s";
+    } else if (sec < 3600) {
+        return to_string(sec / 60.0) + "min";
+    } else {
+        return to_string(sec / 3600.0) + "h";
+    }
+}
 
 int main(int argc, char **argv) {
     // load log configure
@@ -59,12 +68,11 @@ int main(int argc, char **argv) {
     ThreadPool pool(cores);
     queue<future<FinalPosition>> result_queue;
 
-    function<void(gsl_matrix *, double)> h_f[3] = {model_1, model_2, model_3};
-    function<void(gsl_matrix *, double)> d_h_f[3] = {model_1_derive, model_2_derive, model_3_derive};
+    H_matrix_function h_f[3] = {model_1, model_2, model_3};
+    H_matrix_function d_h_f[3] = {model_1_derive, model_2_derive, model_3_derive};
 
 
     // add a clock
-    clock_t start_time;
 
     // single momenta experiment
     if (app.got_subcommand(single)) {
@@ -77,9 +85,9 @@ int main(int argc, char **argv) {
                   << momenta << " dt:" << dt << " times:" << cnt << " norm:" << (norm_flag ? "yes" : "no");
         LOG(INFO) << "runtime debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
 
-        start_time = clock();
 
         // start here
+        const auto start_time = chrono::steady_clock::now();
         int result[] = {0, 0, 0, 0};
         for (int i = 0; i < cnt; ++i) {
             double m = momenta;
@@ -107,15 +115,17 @@ int main(int argc, char **argv) {
         LOG(INFO) << "upper trans " << 100.0 * result[1] / cnt << "%";
         LOG(INFO) << "lower reflect " << 100.0 * result[2] / cnt << "%";
         LOG(INFO) << "upper reflect " << 100.0 * result[3] / cnt << "%";
-        LOG(INFO) << "Total time:" << (clock() - start_time) / (double) CLOCKS_PER_SEC / 60 * cores << "min";
+        long seconds =
+                chrono::duration_cast<chrono::seconds>(chrono::steady_clock::now() - start_time).count() * cores;
+        LOG(INFO) << "Total time:" << format_time(seconds);
     } else if (app.got_subcommand(serial)) {
         LOG(INFO) << "serial start:" << start << " end:" << end << " interval:" << serial_interval
                   << " norm:" << (norm_flag ? "yes" : "no");
         LOG(INFO) << "runtime debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
-        start_time = clock();
         ofstream fs;
         fs.open(path);
         if (cnt < 2000) cnt = 2000;
+        const auto start_time = chrono::steady_clock::now();
         double p = start;
         while (p <= end) {
             random_device rd;
@@ -142,7 +152,9 @@ int main(int argc, char **argv) {
                << ' ' << 1.0 * result[3] / cnt << endl;
             p += serial_interval;
         }
+        long seconds =
+                chrono::duration_cast<chrono::seconds>(chrono::steady_clock::now() - start_time).count() * cores;
+        LOG(INFO) << "Total time:" << format_time(seconds);
         fs.close();
-        LOG(INFO) << "Total time:" << (clock() - start_time) / (double) CLOCKS_PER_SEC / 60 * cores << "min";
     }
 }

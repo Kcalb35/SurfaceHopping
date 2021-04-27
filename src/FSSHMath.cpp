@@ -9,6 +9,7 @@
 #include "gsl/gsl_matrix.h"
 #include "gsl/gsl_eigen.h"
 #include "gsl/gsl_complex_math.h"
+#include "gsl/gsl_blas.h"
 #include <mutex>
 
 
@@ -62,7 +63,7 @@ void calculate_density_matrix(gsl_matrix_complex *density_matrix, gsl_vector_com
 
 
 double
-NAC(const std::function<void(gsl_matrix *, double)> &f, double x, gsl_vector *s1, gsl_vector *s2, const double e1,
+NAC(H_matrix_function f, double x, gsl_vector *s1, gsl_vector *s2, const double e1,
     const double e2) {
     auto dh = gsl_matrix_alloc(2, 2);
     f(dh, x);
@@ -152,8 +153,8 @@ void model_3_derive(gsl_matrix *m, double x) {
 }
 
 FinalPosition
-run_single_trajectory(const std::function<void(gsl_matrix *, double)> &h_f,
-                      const std::function<void(gsl_matrix *, double)> &d_h_f, int start_state, double start_momenta,
+run_single_trajectory(H_matrix_function h_f,
+                      H_matrix_function d_h_f, int start_state, double start_momenta,
                       double dt, bool debug) {
     // pre-allocate space
     auto wb = gsl_eigen_symmv_alloc(2);

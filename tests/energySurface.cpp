@@ -26,8 +26,8 @@ int main(int argc, char **argv) {
     ofstream f;
     f.open(path);
 
-    function<void(gsl_matrix *, double)> h_f[3] = {model_1, model_2, model_3};
-    function<void(gsl_matrix *, double)> d_h_f[3] = {model_1_derive, model_2_derive, model_3_derive};
+    H_matrix_function h_f[3] = {model_1, model_2, model_3};
+    H_matrix_function d_h_f[3] = {model_1_derive, model_2_derive, model_3_derive};
 
     auto wb = gsl_eigen_symmv_alloc(2);
     auto h = gsl_matrix_alloc(2, 2);
@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
         }
         gsl_vector_memcpy(t1, tmp1);
         gsl_vector_memcpy(t2, tmp2);
-        double nac = NAC(d_h_f[model-1] , x, t1, t2, e1, e2);
+        double nac = NAC(d_h_f[model - 1], x, t1, t2, e1, e2);
         f << x << '\t' << e1 << '\t' << e2 << '\t' << nac << '\t' << gsl_vector_get(t1, 0) << '\t'
           << gsl_vector_get(t1, 1)
           << '\t' << gsl_vector_get(t2, 0) << '\t' << gsl_vector_get(t2, 1) << endl;
