@@ -121,7 +121,7 @@ void model_2(gsl_matrix *m, double x) {
 /// \param m derived hamitonian matrix to set
 /// \param x position
 void model_2_derive(gsl_matrix *m, double x) {
-    double d12 = -2 * 0.015 * 0.06 * exp(-0.06 * x * x);
+    double d12 = -2 * 0.015 * 0.06 * x * exp(-0.06 * x * x);
     gsl_matrix_set(m, 0, 0, 0);
     gsl_matrix_set(m, 1, 1, 2 * 0.1 * 0.28 * x * exp(-0.28 * x * x));
     gsl_matrix_set(m, 1, 0, d12);
