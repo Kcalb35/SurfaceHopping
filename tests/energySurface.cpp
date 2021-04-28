@@ -35,6 +35,8 @@ int main(int argc, char **argv) {
     auto t2 = gsl_vector_alloc(2);
     auto tmp1 = gsl_vector_alloc(2);
     auto tmp2 = gsl_vector_alloc(2);
+    auto tmp_mid = gsl_matrix_alloc(2, 1);
+    auto tmp_matrix_wb = gsl_matrix_alloc(1, 1);
     double e1, e2;
     int max = 10000;
     for (int i = 0; i < max; i++) {
@@ -53,7 +55,8 @@ int main(int argc, char **argv) {
         }
         gsl_vector_memcpy(t1, tmp1);
         gsl_vector_memcpy(t2, tmp2);
-        double nac = NAC(d_h_f[model - 1], x, t1, t2, e1, e2);
+        d_h_f[model - 1](h, x);
+        double nac = NAC(h, t1, t2, e1, e2, tmp_matrix_wb, tmp_mid);
         f << x << '\t' << e1 << '\t' << e2 << '\t' << nac << '\t' << gsl_vector_get(t1, 0) << '\t'
           << gsl_vector_get(t1, 1)
           << '\t' << gsl_vector_get(t2, 0) << '\t' << gsl_vector_get(t2, 1) << endl;

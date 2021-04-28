@@ -33,14 +33,12 @@ typedef void (*H_matrix_function)(gsl_matrix *, double);
 
 
 void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2,
-                 gsl_eigen_symmv_workspace *wb);
+                 gsl_eigen_symmv_workspace *wb, gsl_vector *e_value, gsl_matrix *e_vector);
 
-double integral(gsl_vector *left, gsl_matrix *m, gsl_vector *right);
+double integral(gsl_vector *left, gsl_matrix *m, gsl_vector *right, gsl_matrix *tmp_mid, gsl_matrix *result_wb);
 
-void calculate_density_matrix(gsl_matrix_complex *density_matrix, gsl_vector_complex *expand);
-
-double
-NAC(H_matrix_function f, double x, gsl_vector *s1, gsl_vector *s2, double e1, double e2);
+double NAC(gsl_matrix *dh, gsl_vector *s1, gsl_vector *s2, double e1,
+           double e2, gsl_matrix *result_wb, gsl_matrix *tmp_mid);
 
 void model_1(gsl_matrix *m, double x);
 

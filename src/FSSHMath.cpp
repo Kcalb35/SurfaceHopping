@@ -9,7 +9,6 @@
 #include "gsl/gsl_matrix.h"
 #include "gsl/gsl_eigen.h"
 #include "gsl/gsl_complex_math.h"
-#include "gsl/gsl_blas.h"
 #include <mutex>
 
 
@@ -22,9 +21,7 @@ const char *FinalPositionName[] = {
 
 
 void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2,
-                 gsl_eigen_symmv_workspace *wb) {
-    auto *e_value = gsl_vector_alloc(2);
-    auto *e_vector = gsl_matrix_alloc(2, 2);
+                 gsl_eigen_symmv_workspace *wb, gsl_vector *e_value, gsl_matrix *e_vector) {
     gsl_eigen_symmv(hamitonian, e_value, e_vector, wb);
     gsl_eigen_symmv_sort(e_value, e_vector, GSL_EIGEN_SORT_VAL_ASC);
 
@@ -33,24 +30,16 @@ void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1,
     gsl_matrix_get_col(s1, e_vector, 0);
     gsl_matrix_get_col(s2, e_vector, 1);
 
-    gsl_vector_free(e_value);
-    gsl_matrix_free(e_vector);
 }
 
-double integral(gsl_vector *left, gsl_matrix *m, gsl_vector *right) {
-    auto tmp = gsl_matrix_alloc(right->size, 1);
-    auto result_matrix = gsl_matrix_alloc(1, 1);
+double integral(gsl_vector *left, gsl_matrix *m, gsl_vector *right, gsl_matrix *tmp_mid, gsl_matrix *result_wb) {
     auto lm = gsl_matrix_view_vector(left, 1, left->size);
     auto rm = gsl_matrix_view_vector(right, right->size, 1);
 
-    gsl_extra_multiply(m, &rm.matrix, tmp);
-    gsl_extra_multiply(&lm.matrix, tmp, result_matrix);
+    gsl_extra_multiply(m, &rm.matrix, tmp_mid);
+    gsl_extra_multiply(&lm.matrix, tmp_mid, result_wb);
 
-    double result = gsl_matrix_get(result_matrix, 0, 0);
-
-    gsl_matrix_free(tmp);
-    gsl_matrix_free(result_matrix);
-    return result;
+    return gsl_matrix_get(result_wb, 0, 0);
 }
 
 
@@ -62,22 +51,23 @@ void calculate_density_matrix(gsl_matrix_complex *density_matrix, gsl_vector_com
 }
 
 
-double
-NAC(H_matrix_function f, double x, gsl_vector *s1, gsl_vector *s2, const double e1,
-    const double e2) {
-    auto dh = gsl_matrix_alloc(2, 2);
-    f(dh, x);
-    auto nac = gsl_matrix_alloc(1, 1);
+/// calculate nac
+/// \param dh derive hamitonian
+/// \param s1
+/// \param s2
+/// \param e1
+/// \param e2
+/// \param result_wb matrix size 1x1
+/// \param tmp_mid matrix size 2x1
+/// \return
+double NAC(gsl_matrix *dh, gsl_vector *s1, gsl_vector *s2, const double e1,
+           const double e2, gsl_matrix *result_wb, gsl_matrix *tmp_mid) {
     gsl_matrix_view t1 = gsl_matrix_view_vector(s1, 1, 2);
     gsl_matrix_view t2 = gsl_matrix_view_vector(s2, 2, 1);
-    auto tmp = gsl_matrix_alloc(2, 1);
-    gsl_extra_multiply(dh, &t2.matrix, tmp);
-    gsl_extra_multiply(&t1.matrix, tmp, nac);
+    gsl_extra_multiply(dh, &t2.matrix, tmp_mid);
+    gsl_extra_multiply(&t1.matrix, tmp_mid, result_wb);
 
-    double result = gsl_matrix_get(nac, 0, 0);
-    gsl_matrix_free(dh);
-    gsl_matrix_free(nac);
-    gsl_matrix_free(tmp);
+    double result = gsl_matrix_get(result_wb, 0, 0);
     return result / (e2 - e1);
 }
 
@@ -168,6 +158,12 @@ run_single_trajectory(H_matrix_function h_f,
     auto tmp_hamitonian = gsl_matrix_alloc(2, 2);
     gsl_vector *tmp_t[] = {gsl_vector_alloc(2), gsl_vector_alloc(2)};
 
+    // tmp working space
+    auto tmp_result_wb = gsl_matrix_alloc(1, 1);
+    auto tmp_mid_work = gsl_matrix_alloc(2, 1);
+    auto tmp_e_vals = gsl_vector_alloc(2);
+    auto tmp_e_vecs = gsl_matrix_alloc(2, 2);
+
     double e[] = {0, 0};
     int log_cnt = 0;
     std::random_device rd;
@@ -183,10 +179,11 @@ run_single_trajectory(H_matrix_function h_f,
     atom.state = start_state;
 
     h_f(hamitonian, atom.x);
-    diagonalize(hamitonian, e[0], e[1], t[0], t[1], wb);
+    diagonalize(hamitonian, e[0], e[1], t[0], t[1], wb, tmp_e_vals, tmp_e_vecs);
     atom.potential_energy = e[atom.state];
     d_h_f(tmp_hamitonian, atom.x);
-    double acceleration = -integral(t[atom.state], tmp_hamitonian, t[atom.state]) / atom.mass;
+    double acceleration =
+            -integral(t[atom.state], tmp_hamitonian, t[atom.state], tmp_mid_work, tmp_result_wb) / atom.mass;
 
     auto expand = gsl_vector_complex_alloc(2);
     gsl_vector_complex_set(expand, start_state, gsl_complex{1, 0});
@@ -200,7 +197,7 @@ run_single_trajectory(H_matrix_function h_f,
         atom.x = atom.x + atom.velocity * dt + 0.5 * acceleration * dt * dt;
         // calculate new potential and coefficients
         h_f(hamitonian, atom.x);
-        diagonalize(hamitonian, e[0], e[1], tmp_t[0], tmp_t[1], wb);
+        diagonalize(hamitonian, e[0], e[1], tmp_t[0], tmp_t[1], wb, tmp_e_vals, tmp_e_vecs);
         // wave function phase correction
         for (int i = 0; i < 2; ++i) {
             if (gsl_vector_get(tmp_t[i], 0) * gsl_vector_get(t[i], 0) < 0 ||
@@ -211,7 +208,8 @@ run_single_trajectory(H_matrix_function h_f,
 
         // calculate force and acceleration
         d_h_f(tmp_hamitonian, atom.x);
-        double new_acc = -integral(t[atom.state], tmp_hamitonian, t[atom.state]) / atom.mass;
+        double new_acc =
+                -integral(t[atom.state], tmp_hamitonian, t[atom.state], tmp_mid_work, tmp_result_wb) / atom.mass;
         atom.velocity = atom.velocity + (new_acc + acceleration) / 2 * dt;
         acceleration = new_acc;
 
@@ -220,7 +218,7 @@ run_single_trajectory(H_matrix_function h_f,
         atom.kinetic_energy = 0.5 * atom.mass * atom.velocity * atom.velocity;
 
         // calculate nac
-        double nac_x = NAC(d_h_f, atom.x, t[0], t[1], e[0], e[1]);
+        double nac_x = NAC(tmp_hamitonian, t[0], t[1], e[0], e[1], tmp_result_wb, tmp_mid_work);
         gsl_matrix_set(nac, 0, 1, nac_x);
         gsl_matrix_set(nac, 1, 0, -nac_x);
 
@@ -317,6 +315,11 @@ run_single_trajectory(H_matrix_function h_f,
     gsl_matrix_free(tmp_hamitonian);
     gsl_matrix_complex_free(density_matrix);
     gsl_matrix_complex_free(density_matrix_grad);
+
+    gsl_matrix_free(tmp_result_wb);
+    gsl_matrix_free(tmp_mid_work);
+    gsl_matrix_free(tmp_e_vecs);
+    gsl_vector_free(tmp_e_vals);
     gsl_eigen_symmv_free(wb);
     return final;
 }

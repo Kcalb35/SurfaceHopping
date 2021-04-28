@@ -72,8 +72,6 @@ int main(int argc, char **argv) {
     H_matrix_function d_h_f[3] = {model_1_derive, model_2_derive, model_3_derive};
 
 
-    // add a clock
-
     // single momenta experiment
     if (app.got_subcommand(single)) {
         random_device rd;
