@@ -52,6 +52,12 @@ void model_3(gsl_matrix *m, double x);
 
 void model_3_derive(gsl_matrix *m, double x);
 
+void model_3_analytic(double x, gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2);
+
+double model_3_nac_analytic(double x);
+
+double model_3_grad_analytic(double x, int state);
+
 FinalPosition
 run_single_trajectory(H_matrix_function hamitonian_f,
                       H_matrix_function d_hamitonian_f,
