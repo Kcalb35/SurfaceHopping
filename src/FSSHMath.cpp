@@ -10,7 +10,7 @@
 #include "gsl/gsl_eigen.h"
 #include "gsl/gsl_complex_math.h"
 #include "gsl/gsl_blas.h"
-#include <mutex>
+#include <iomanip>
 
 
 const char *FinalPositionName[] = {
@@ -184,10 +184,10 @@ double model_3_grad_analytic(double x, int state) {
     return d;
 }
 
+
 FinalPosition
-run_single_trajectory(H_matrix_function h_f,
-                      H_matrix_function d_h_f, int start_state, double start_momenta,
-                      double dt, bool debug) {
+run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_state, double start_momenta, double dt,
+                      bool debug) {
     // pre-allocate space
     auto wb = gsl_eigen_symmv_alloc(2);
     auto nac = gsl_matrix_alloc(2, 2);
@@ -201,11 +201,10 @@ run_single_trajectory(H_matrix_function h_f,
     gsl_vector *tmp_t[] = {gsl_vector_alloc(2), gsl_vector_alloc(2)};
 
     // tmp working space
-    auto tmp_result_wb = gsl_matrix_alloc(1, 1);
-    auto tmp_mid_work = gsl_matrix_alloc(2, 1);
-    auto tmp_e_vals = gsl_vector_alloc(2);
-    auto tmp_e_vecs = gsl_matrix_alloc(2, 2);
-
+//    auto tmp_result_wb = gsl_matrix_alloc(1, 1);
+//    auto tmp_mid_work = gsl_matrix_alloc(2, 1);
+//    auto tmp_e_vals = gsl_vector_alloc(2);
+//    auto tmp_e_vecs = gsl_matrix_alloc(2, 2);
     double e[] = {0, 0};
     int log_cnt = 0;
     std::random_device rd;
@@ -229,7 +228,7 @@ run_single_trajectory(H_matrix_function h_f,
 //    d_h_f(tmp_hamitonian, atom.x);
 //    double acceleration =
 //            -integral(t[atom.state], tmp_hamitonian, t[atom.state], tmp_mid_work, tmp_result_wb) / atom.mass;
-    double acceleration = -model_3_grad_analytic(atom.x, atom.state) / atom.mass;
+//    double acceleration = -model_3_grad_analytic(atom.x, atom.state) / atom.mass;
 
     auto expand = gsl_vector_complex_alloc(2);
     gsl_vector_complex_set(expand, start_state, gsl_complex{1, 0});
@@ -238,30 +237,23 @@ run_single_trajectory(H_matrix_function h_f,
     if (debug) atom.log("start");
 
     // start dynamic evolve
+    double half = dt / 2;
+    double v1, v2, v3, v4, a1, a2, a3, a4;
     while ((atom.velocity > 0 && atom.x <= 10) || (atom.velocity < 0 && atom.x > -10)) {
-        // move the atom using verlet method
-        atom.x = atom.x + atom.velocity * dt + 0.5 * acceleration * dt * dt;
-        // calculate new potential and coefficients
-//        h_f(hamitonian, atom.x);
-//        diagonalize(hamitonian, e[0], e[1], tmp_t[0], tmp_t[1], wb, tmp_e_vals, tmp_e_vecs);
-        model_3_analytic(atom.x, hamitonian, e[0], e[1], t[0], t[1]);
-        // wave function phase correction
-//        for (int i = 0; i < 2; ++i) {
-//            if (gsl_vector_get(tmp_t[i], 0) * gsl_vector_get(t[i], 0) < 0 ||
-//                gsl_vector_get(tmp_t[i], 1) * gsl_vector_get(t[i], 1) < 0)
-//                gsl_vector_scale(tmp_t[i], -1);
-//            gsl_vector_memcpy(t[i], tmp_t[i]);
-//        }
-
-        // calculate force and acceleration
-//        d_h_f(tmp_hamitonian, atom.x);
-//        double new_acc =
-//                -integral(t[atom.state], tmp_hamitonian, t[atom.state], tmp_mid_work, tmp_result_wb) / atom.mass;
-        double new_acc = -model_3_grad_analytic(atom.x, atom.state) / atom.mass;
-        atom.velocity = atom.velocity + (new_acc + acceleration) / 2 * dt;
-        acceleration = new_acc;
+        // using RK4
+        v1 = atom.velocity;
+        a1 = -model_3_grad_analytic(atom.x, atom.state) / atom.mass;
+        v2 = atom.velocity + a1 * half;
+        a2 = -model_3_grad_analytic(atom.x + v1 * half, atom.state) / atom.mass;
+        v3 = atom.velocity + a2 * half;
+        a3 = -model_3_grad_analytic(atom.x + v2 * half, atom.state) / atom.mass;
+        v4 = atom.velocity + a3 * dt;
+        a4 = -model_3_grad_analytic(atom.x + v3 * dt, atom.state) / atom.mass;
+        atom.x += dt / 6.0 * (v1 + 2 * v2 + 2 * v3 + v4);
+        atom.velocity += dt / 6.0 * (a1 + 2 * a2 + 2 * a3 + a4);
 
         // update energies
+        model_3_analytic(atom.x, hamitonian, e[0], e[1], t[0], t[1]);
         atom.potential_energy = e[atom.state];
         atom.kinetic_energy = 0.5 * atom.mass * atom.velocity * atom.velocity;
 
@@ -321,7 +313,6 @@ run_single_trajectory(H_matrix_function h_f,
                 atom.potential_energy = e[1 - k];
                 atom.velocity = (sgn(atom.velocity)) * sqrt(2 * atom.kinetic_energy / atom.mass);
                 atom.state = 1 - k;
-                acceleration = -model_3_grad_analytic(atom.x, atom.state) / atom.mass;
                 if (debug) {
                     LOG(INFO) << "jump " << zeta << '/' << prob;
                     atom.log("jump_after");
@@ -333,11 +324,10 @@ run_single_trajectory(H_matrix_function h_f,
             if (++log_cnt % int(10 / dt) == 0) {
                 log_cnt = 0;
                 atom.log("move");
-                LOG(INFO) << "a:" << acceleration;
 //                log_matrix(density_matrix, 2, 2, "density_matrix");
 //                LOG(INFO) << zeta << '/' << prob;
-//                LOG(INFO) << GSL_REAL(gsl_matrix_complex_get(density_matrix, 0, 0)) +
-//                             GSL_REAL(gsl_matrix_complex_get(density_matrix, 1, 1));
+                LOG(INFO) << GSL_REAL(gsl_matrix_complex_get(density_matrix, 0, 0)) +
+                             GSL_REAL(gsl_matrix_complex_get(density_matrix, 1, 1));
             }
     }
 
@@ -368,16 +358,16 @@ run_single_trajectory(H_matrix_function h_f,
     gsl_matrix_complex_free(density_matrix);
     gsl_matrix_complex_free(density_matrix_grad);
 
-    gsl_matrix_free(tmp_result_wb);
-    gsl_matrix_free(tmp_mid_work);
-    gsl_matrix_free(tmp_e_vecs);
-    gsl_vector_free(tmp_e_vals);
+//    gsl_matrix_free(tmp_result_wb);
+//    gsl_matrix_free(tmp_mid_work);
+//    gsl_matrix_free(tmp_e_vecs);
+//    gsl_vector_free(tmp_e_vals);
     gsl_eigen_symmv_free(wb);
     return final;
 }
 
 void Atom::log(const std::string &s) const {
-    LOG(INFO) << s << " Ep:" << potential_energy << " Ek:" << kinetic_energy << " E:"
+    LOG(INFO) << s << " Ep:" << potential_energy << " Ek:" << kinetic_energy << " E:" <<std::setprecision(10)
               << potential_energy + kinetic_energy << " x:" << x << " state:" << state << " v:" << velocity;
 }
 
