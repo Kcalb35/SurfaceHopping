@@ -1,8 +1,9 @@
 #include "FSSHMath.h"
 #include "easylogging++.h"
 #include "CLI11.hpp"
-#include <thread>
 #include "ThreadPool.h"
+#include "ModelBase.h"
+#include <thread>
 #include <random>
 
 INITIALIZE_EASYLOGGINGPP
@@ -41,6 +42,7 @@ int main(int argc, char **argv) {
     double serial_interval = 0;
     double start = 1, end = 30;
     bool norm_flag = false;
+    bool ana_flag = false;
     string path("serial.dat");
 
     // shared options
@@ -48,6 +50,7 @@ int main(int argc, char **argv) {
     app.add_option("-m", model_index, "model index (1,2,3)");
     app.add_option("-t", dt, "simulate interval (default=1)");
     app.add_option("-c", cnt, "run times (default=2000)");
+    app.add_flag("--ana", ana_flag, "using analytic solution");
     // multi-threading option
     app.add_option("--cores", cores, "how many threads to use (default=1)");
     app.add_flag("--debug", debug_flag, "whether to log debug info");
@@ -67,20 +70,25 @@ int main(int argc, char **argv) {
     if (cores > 1) debug_flag = false;
     ThreadPool pool(cores);
     queue<future<FinalPosition>> result_queue;
+    model_type type = (ana_flag ? model_type::analytic : model_type::numerical);
 
-    H_matrix_function h_f[3] = {model_1, model_2, model_3};
-    H_matrix_function d_h_f[3] = {model_1_derive, model_2_derive, model_3_derive};
-
+    // prepare models
+    SAC sac;
+    DAC dac;
+    ECR ecr;
+    NumericalModel *num_models[3] = {&sac, &dac, &ecr};
+    AnalyticModel *ana_models[3] = {nullptr, nullptr, &ecr};
 
     // single momenta experiment
     if (app.got_subcommand(single)) {
         random_device rd;
         mt19937 gen(rd());
-        normal_distribution<double> distribution(momenta, momenta / 10);
+        normal_distribution<double> distribution(momenta, momenta / 20);
 
         // log start settings
         LOG(INFO) << "simulate state:" << start_state << " model:" << model_index << " momenta:"
-                  << momenta << " dt:" << dt << " times:" << cnt << " norm:" << (norm_flag ? "yes" : "no");
+                  << momenta << " dt:" << dt << " times:" << cnt << (norm_flag ? " norm" : "")
+                  << (ana_flag ? " analytic" : " numerical");
         LOG(INFO) << "runtime debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
 
 
@@ -92,8 +100,8 @@ int main(int argc, char **argv) {
             if (norm_flag) {
                 m = distribution(gen);
             }
-            auto res = pool.enqueue(run_single_trajectory, h_f[model_index - 1], d_h_f[model_index - 1], start_state,
-                                    m, dt, debug_flag);
+            auto res = pool.enqueue(run_single_trajectory, num_models[model_index - 1], ana_models[model_index - 1],
+                                    start_state, m, dt, debug_flag, type);
             result_queue.push(move(res));
         };
         while (!result_queue.empty()) {
@@ -105,7 +113,8 @@ int main(int argc, char **argv) {
         // if debug then log settings again and result
         if (debug_flag) {
             LOG(INFO) << "simulate state:" << start_state << " model:" << model_index << " momenta:"
-                      << momenta << " dt:" << dt << " times:" << cnt << " norm:" << (norm_flag ? "yes" : "no");
+                      << momenta << " dt:" << dt << " times:" << cnt << (norm_flag ? " norm" : "")
+                      << (ana_flag ? " analytic" : " numerical");
             LOG(INFO) << "runtime debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
         }
 
@@ -118,7 +127,7 @@ int main(int argc, char **argv) {
         LOG(INFO) << "Total time:" << format_time(seconds);
     } else if (app.got_subcommand(serial)) {
         LOG(INFO) << "serial start:" << start << " end:" << end << " interval:" << serial_interval
-                  << " norm:" << (norm_flag ? "yes" : "no");
+                  << (norm_flag ? " norm" : "") << (ana_flag ? " analytic" : " numerical");
         LOG(INFO) << "runtime debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
         ofstream fs;
         fs.open(path);
@@ -137,8 +146,8 @@ int main(int argc, char **argv) {
                 if (norm_flag) {
                     m = distribution(gen);
                 }
-                auto res = pool.enqueue(run_single_trajectory, h_f[model_index - 1], d_h_f[model_index - 1],
-                                        start_state, m, dt, debug_flag);
+                auto res = pool.enqueue(run_single_trajectory, num_models[model_index - 1], ana_models[model_index - 1],
+                                        start_state, m, dt, debug_flag, type);
                 result_queue.push(move(res));
             }
             while (!result_queue.empty()) {

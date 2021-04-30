@@ -9,7 +9,8 @@
 #include "gsl/gsl_matrix.h"
 #include "gsl/gsl_eigen.h"
 #include "gsl/gsl_complex_math.h"
-#include "gsl/gsl_blas.h"
+#include "ModelBase.h"
+#include <stdexcept>
 #include <iomanip>
 
 
@@ -20,6 +21,13 @@ const char *FinalPositionName[] = {
         "upper_reflection"
 };
 
+double integral(gsl_vector *left, gsl_matrix *op, gsl_vector *right, gsl_vector *wb) {
+    gsl_vector_set_zero(wb);
+    gsl_blas_dgemv(CblasNoTrans, 1, op, right, 0, wb);
+    double result;
+    gsl_blas_ddot(left, wb, &result);
+    return result;
+}
 
 void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2,
                  gsl_eigen_symmv_workspace *wb, gsl_vector *e_value, gsl_matrix *e_vector) {
@@ -33,156 +41,15 @@ void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1,
 
 }
 
-double integral(gsl_vector *left, gsl_matrix *m, gsl_vector *right, gsl_matrix *tmp_mid, gsl_matrix *result_wb) {
-    auto lm = gsl_matrix_view_vector(left, 1, left->size);
-    auto rm = gsl_matrix_view_vector(right, right->size, 1);
-
-    gsl_extra_multiply(m, &rm.matrix, tmp_mid);
-    gsl_extra_multiply(&lm.matrix, tmp_mid, result_wb);
-
-    return gsl_matrix_get(result_wb, 0, 0);
-}
-
-
-void calculate_density_matrix(gsl_matrix_complex *density_matrix, gsl_vector_complex *expand) {
-
-    auto v1 = gsl_matrix_complex_view_vector(expand, 2, 1);
-    auto v2 = gsl_matrix_complex_view_vector(expand, 1, 2);
-    gsl_extra_multiply(&v1.matrix, &v2.matrix, density_matrix);
-}
-
-
-/// calculate nac
-/// \param dh derive hamitonian
-/// \param s1
-/// \param s2
-/// \param e1
-/// \param e2
-/// \param result_wb matrix size 1x1
-/// \param tmp_mid matrix size 2x1
-/// \return
-double NAC(gsl_matrix *dh, gsl_vector *s1, gsl_vector *s2, const double e1,
-           const double e2, gsl_matrix *result_wb, gsl_matrix *tmp_mid) {
-    gsl_matrix_view t1 = gsl_matrix_view_vector(s1, 1, 2);
-    gsl_matrix_view t2 = gsl_matrix_view_vector(s2, 2, 1);
-    gsl_extra_multiply(dh, &t2.matrix, tmp_mid);
-    gsl_extra_multiply(&t1.matrix, tmp_mid, result_wb);
-
-    double result = gsl_matrix_get(result_wb, 0, 0);
+double NAC(gsl_matrix *dh, gsl_vector *s1, gsl_vector *s2, double e1,
+           double e2, gsl_vector *tmp_wb) {
+    double result;
+    gsl_vector_set_zero(tmp_wb);
+    gsl_blas_dgemv(CblasNoTrans, 1, dh, s2, 0, tmp_wb);
+    gsl_blas_ddot(s1, tmp_wb, &result);
     return result / (e2 - e1);
 }
 
-
-/// tully model 1
-/// \param m hamitonian matrix to set
-/// \param x position
-void model_1(gsl_matrix *m, double x) {
-    int flag = (x > 0 ? 1 : -1);
-    double h11 = flag * 0.01 * (1 - exp(-flag * 1.6 * x));
-    double h12 = 0.005 * exp(-x * x);
-    gsl_matrix_set(m, 0, 0, h11);
-    gsl_matrix_set(m, 1, 1, -h11);
-    gsl_matrix_set(m, 0, 1, h12);
-    gsl_matrix_set(m, 1, 0, h12);
-}
-
-/// tully model 1 derived hamitonian
-/// \param m derived hamitonian matrix to set
-/// \param x position
-void model_1_derive(gsl_matrix *m, double x) {
-    double h11 = 0.01 * 1.6 * exp((x < 0 ? 1 : -1) * 1.6 * x);
-    double h12 = -2 * 0.005 * x * exp(-x * x);
-    gsl_matrix_set(m, 0, 0, h11);
-    gsl_matrix_set(m, 1, 1, -h11);
-    gsl_matrix_set(m, 1, 0, h12);
-    gsl_matrix_set(m, 0, 1, h12);
-}
-
-/// tully model 2
-/// \param m hamitonian matrix to set
-/// \param x position
-void model_2(gsl_matrix *m, double x) {
-    double h12 = 0.015 * exp(-0.06 * x * x);
-    gsl_matrix_set(m, 0, 0, 0);
-    gsl_matrix_set(m, 1, 1, -0.1 * exp(-0.28 * x * x) + 0.05);
-    gsl_matrix_set(m, 0, 1, h12);
-    gsl_matrix_set(m, 1, 0, h12);
-}
-
-/// tully model 1 derived hamitonian
-/// \param m derived hamitonian matrix to set
-/// \param x position
-void model_2_derive(gsl_matrix *m, double x) {
-    double d12 = -2 * 0.015 * 0.06 * x * exp(-0.06 * x * x);
-    gsl_matrix_set(m, 0, 0, 0);
-    gsl_matrix_set(m, 1, 1, 2 * 0.1 * 0.28 * x * exp(-0.28 * x * x));
-    gsl_matrix_set(m, 1, 0, d12);
-    gsl_matrix_set(m, 0, 1, d12);
-}
-
-
-/// tully model 3
-/// \param m hamitonian matrix to set
-/// \param x position
-void model_3(gsl_matrix *m, double x) {
-    double d12 = x < 0 ? 0.1 * exp(0.9 * x) : 0.1 * (2 - exp(-0.9 * x));
-    gsl_matrix_set(m, 0, 0, 6e-4);
-    gsl_matrix_set(m, 1, 1, -6e-4);
-    gsl_matrix_set(m, 0, 1, d12);
-    gsl_matrix_set(m, 1, 0, d12);
-}
-
-/// tully model 1 derived hamitonian
-/// \param m derived hamitonian matrix to set
-/// \param x position
-void model_3_derive(gsl_matrix *m, double x) {
-    double d12 = 0.1 * 0.9 * exp((x > 0 ? -1 : 1) * 0.9 * x);
-    gsl_matrix_set(m, 0, 0, 0);
-    gsl_matrix_set(m, 1, 1, 0);
-    gsl_matrix_set(m, 1, 0, d12);
-    gsl_matrix_set(m, 0, 1, d12);
-}
-
-void model_3_analytic(double x, gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2) {
-    double h12 = x < 0 ? 0.1 * exp(0.9 * x) : 0.1 * (2 - exp(-0.9 * x));
-    e1 = -sqrt(9 + 25e6 * h12 * h12) / 5000;
-    e2 = -e1;
-    gsl_matrix_set_all(hamitonian, 0);
-    gsl_matrix_set(hamitonian, 0, 0, e1);
-    gsl_matrix_set(hamitonian, 1, 1, e2);
-    gsl_vector_set(s1, 0, (3 - sqrt(9 + 25e6 * h12 * h12)) / 5000 / h12);
-    gsl_vector_set(s1, 1, 1);
-    gsl_vector_set(s2, 0, (3 + sqrt(9 + 25e6 * h12 * h12)) / 5000 / h12);
-    gsl_vector_set(s2, 1, 1);
-    gsl_vector_scale(s1, gsl_blas_dnrm2(s1));
-    gsl_vector_scale(s2, gsl_blas_dnrm2(s2));
-}
-
-double model_3_nac_analytic(double x) {
-    if (x < 0) {
-        double tmp = sqrt(9 + 25e4 * exp(1.8 * x));
-        return 337500. / tmp / sqrt(25e4 - 3 * exp(-1.8 * x) * (-3 + tmp)) /
-               sqrt(25e4 + 3 * exp(-1.8 * x) * (3 + tmp));
-    } else {
-        double tmp1 = pow(-2 + exp(-0.9 * x), 2);
-        double tmp2 = 9 + 25e4 * tmp1;
-        return 168750 / (-0.5 + exp(0.9 * x)) / sqrt(tmp2) / sqrt(tmp2 - 3 * sqrt(tmp2)) / sqrt(tmp2 + 3 * sqrt(tmp2)) *
-               tmp1;
-    }
-}
-
-double model_3_grad_analytic(double x, int state) {
-    double d;
-    if (x < 0) {
-        d = -45 * exp(1.8 * x) / sqrt(9 + 25e4 * exp(1.8 * x));
-    } else {
-        d = exp(-1.8 * x) * (45 - 90 * exp(0.9 * x)) / sqrt(9 + 25e4 * pow(-2 + exp(-0.9 * x), 2));
-    }
-    if (state == 1) {
-        d = -d;
-    }
-    return d;
-}
 
 void density_matrix_grad_cal(gsl_matrix_complex *density_grad, gsl_matrix_complex *density, gsl_matrix *hamitonian,
                              double v, gsl_matrix *nac) {
@@ -206,14 +73,20 @@ void density_matrix_grad_cal(gsl_matrix_complex *density_grad, gsl_matrix_comple
 }
 
 FinalPosition
-run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_state, double start_momenta, double dt,
-                      bool debug) {
-    // pre-allocate space
-    auto nac = gsl_matrix_alloc(2, 2);
-    gsl_matrix_set_all(nac, 0);
+run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int start_state, double start_momenta,
+                      double dt, bool debug, model_type type) {
+
+    if (type == model_type::analytic && ana_model == nullptr || type == model_type::numerical && num_model == nullptr)
+        throw std::runtime_error("not supported");
+
+    auto nac = gsl_matrix_calloc(2, 2);
     auto hamitonian = gsl_matrix_alloc(2, 2);
     gsl_vector *t[] = {gsl_vector_alloc(2), gsl_vector_alloc(2)};
-    auto density_matrix = gsl_matrix_complex_alloc(2, 2);
+    gsl_vector *tmp_t[] = {
+            gsl_vector_alloc(2),
+            gsl_vector_alloc(2)
+    };
+    auto density_matrix = gsl_matrix_complex_calloc(2, 2);
     auto tmp_density_matrix = gsl_matrix_complex_alloc(2, 2);
     gsl_matrix_complex *tmp_density_matrix_grad[]{
             gsl_matrix_complex_alloc(2, 2),
@@ -223,12 +96,17 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
             gsl_matrix_complex_alloc(2, 2)
     };
 
+    // prepare work space
+    auto wb = gsl_eigen_symmv_alloc(2);
+    auto wb_vecs = gsl_matrix_alloc(2, 2);
+    auto wb_vals = gsl_vector_alloc(2);
+    auto wb_dot_vec = gsl_vector_calloc(2);
+
     double e[] = {0, 0};
     int log_cnt = 0;
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> distrib(0, 1.0);
-    FinalPosition final;
 
     // initial an atom
     Atom atom;
@@ -236,18 +114,18 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
     atom.kinetic_energy = start_momenta * start_momenta / 2 / atom.mass;
     atom.x = -17.5 - 30 / start_momenta;
     atom.state = start_state;
-
-    model_3_analytic(atom.x, hamitonian, e[0], e[1], t[0], t[1]);
+    if (type == model_type::analytic) {
+        ana_model->diagonal_analytic(atom.x, hamitonian, e[0], e[1], t[0], t[1]);
+    } else {
+        num_model->hamitonian_cal(hamitonian, atom.x);
+        diagonalize(hamitonian, e[0], e[1], t[0], t[1], wb, wb_vals, wb_vecs);
+    }
     atom.potential_energy = e[atom.state];
-
-    auto expand = gsl_vector_complex_alloc(2);
-    gsl_vector_complex_set(expand, start_state, gsl_complex{1, 0});
-    gsl_vector_complex_set(expand, 1 - start_state, gsl_complex{0, 0});
-    calculate_density_matrix(density_matrix, expand);
+    gsl_matrix_complex_set(density_matrix, atom.state, atom.state, gsl_complex{1, 0});
     if (debug) atom.log("start");
 
     // start dynamic evolve
-    double rk4dt[] = {dt / 2, dt / 2, dt, 0};
+    double rk4dt[]{dt / 2, dt / 2, dt, 0};
     double v[4], a[4], tmp_x, tmp_v;
     double nac_x;
     while ((atom.velocity > 0 && atom.x <= 10) || (atom.velocity < 0 && atom.x > -10)) {
@@ -258,15 +136,36 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
 
         for (int i = 0; i < 4; ++i) {
             v[i] = tmp_v;
-            a[i] = -model_3_grad_analytic(tmp_x, atom.state) / atom.mass;
-            model_3_analytic(tmp_x, hamitonian, e[0], e[1], t[0], t[1]);
-            nac_x = model_3_nac_analytic(tmp_x);
+            if (type == model_type::analytic) {
+                a[i] = -ana_model->energy_grad_analytic(tmp_x, atom.state) / atom.mass;
+                ana_model->diagonal_analytic(tmp_x, hamitonian, e[0], e[1], t[0], t[1]);
+                nac_x = ana_model->nac_analytic(tmp_x);
+            } else {
+                num_model->hamitonian_cal(hamitonian, tmp_x);
+                diagonalize(hamitonian, e[0], e[1], tmp_t[0], tmp_t[1], wb, wb_vals, wb_vecs);
+
+                for (int j = 0; j < 2; ++j) {
+                    if (gsl_vector_get(tmp_t[j], 0) * gsl_vector_get(t[j], 0) < 0 ||
+                        gsl_vector_get(tmp_t[j], 1) * gsl_vector_get(t[j], 1) < 0)
+                        gsl_vector_scale(tmp_t[j], -1);
+                }
+
+                // set d_hamitonian
+                num_model->d_hamitonian_cal(hamitonian, tmp_x);
+                nac_x = NAC(hamitonian, tmp_t[0], tmp_t[1], e[0], e[1], wb_dot_vec);
+                a[i] = -integral(t[atom.state], hamitonian, t[atom.state], wb_dot_vec) / atom.mass;
+                // set hamitonian
+                gsl_matrix_set_zero(hamitonian);
+                gsl_matrix_set(hamitonian, 0, 0, e[0]);
+                gsl_matrix_set(hamitonian, 1, 1, e[1]);
+            }
             gsl_matrix_set(nac, 0, 1, nac_x);
             gsl_matrix_set(nac, 1, 0, -nac_x);
             density_matrix_grad_cal(tmp_density_matrix_grad[i], tmp_density_matrix, hamitonian, tmp_v, nac);
+            if (i == 3) break;
             tmp_x = atom.x + rk4dt[i] * v[i];
             tmp_v = atom.velocity + rk4dt[i] * a[i];
-            gsl_matrix_complex_memcpy(tmp_density_matrix_grad[4], tmp_density_matrix_grad[0]);
+            gsl_matrix_complex_memcpy(tmp_density_matrix_grad[4], tmp_density_matrix_grad[i]);
             gsl_matrix_complex_scale(tmp_density_matrix_grad[4], gsl_complex{rk4dt[i], 0});
             gsl_matrix_complex_memcpy(tmp_density_matrix, density_matrix);
             gsl_matrix_complex_add(tmp_density_matrix, tmp_density_matrix_grad[4]);
@@ -284,7 +183,19 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
         }
 
         // update energies
-        model_3_analytic(atom.x, hamitonian, e[0], e[1], t[0], t[1]);
+        if (type == model_type::analytic) {
+            ana_model->diagonal_analytic(atom.x, hamitonian, e[0], e[1], t[0], t[1]);
+        } else {
+            num_model->hamitonian_cal(hamitonian, atom.x);
+            diagonalize(hamitonian, e[0], e[1], tmp_t[0], tmp_t[1], wb, wb_vals, wb_vecs);
+
+            for (int j = 0; j < 2; ++j) {
+                if (gsl_vector_get(tmp_t[j], 0) * gsl_vector_get(t[j], 0) < 0 ||
+                    gsl_vector_get(tmp_t[j], 1) * gsl_vector_get(t[j], 1) < 0)
+                    gsl_vector_scale(tmp_t[j], -1);
+                gsl_vector_memcpy(t[j], tmp_t[j]);
+            }
+        }
         atom.potential_energy = e[atom.state];
         atom.kinetic_energy = 0.5 * atom.mass * atom.velocity * atom.velocity;
 
@@ -330,6 +241,7 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
 
     // judge final state
     if (debug) atom.log("end");
+    FinalPosition final;
     if (atom.x > 0) {
         if (atom.state == 1)
             final = FinalPosition::upper_transmission;
@@ -351,6 +263,11 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
     gsl_matrix_free(hamitonian);
     gsl_matrix_complex_free(density_matrix);
     gsl_matrix_complex_free(tmp_density_matrix);
+
+    gsl_eigen_symmv_free(wb);
+    gsl_matrix_free(wb_vecs);
+    gsl_vector_free(wb_vals);
+    gsl_vector_free(wb_dot_vec);
     for (auto &i : tmp_density_matrix_grad) {
         gsl_matrix_complex_free(i);
     }
@@ -358,7 +275,7 @@ run_single_trajectory(H_matrix_function h_f, H_matrix_function d_h_f, int start_
 }
 
 void Atom::log(const std::string &s) const {
-    LOG(INFO) << s << " Ep:" << potential_energy << " Ek:" << kinetic_energy << " E:" <<std::setprecision(10)
+    LOG(INFO) << s << std::setprecision(10) << " Ep:" << potential_energy << " Ek:" << kinetic_energy << " E:"
               << potential_energy + kinetic_energy << " x:" << x << " state:" << state << " v:" << velocity;
 }
 

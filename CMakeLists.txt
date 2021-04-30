@@ -22,7 +22,7 @@ target_include_directories(log PUBLIC ${PROJECT_SOURCE_DIR}/lib/easyloggingpp/sr
 # target FSSH lib
 add_library(FSSHLib STATIC
         src/FSSHMath.cpp
-        src/gslExtra.cpp)
+        src/gslExtra.cpp src/ModelBase.cpp)
 target_include_directories(FSSHLib
         PUBLIC
         ${PROJECT_SOURCE_DIR}/include)
