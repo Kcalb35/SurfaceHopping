@@ -81,6 +81,7 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
 
     auto nac = gsl_matrix_calloc(2, 2);
     auto hamitonian = gsl_matrix_alloc(2, 2);
+    auto hamitonian_z = gsl_matrix_complex_alloc(2, 2);
     gsl_vector *t[] = {gsl_vector_alloc(2), gsl_vector_alloc(2)};
     gsl_vector *tmp_t[] = {
             gsl_vector_alloc(2),
@@ -171,7 +172,7 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
             gsl_matrix_complex_add(tmp_density_matrix, tmp_density_matrix_grad[4]);
         }
 
-
+        // finish RK4 update all properties
         atom.x += dt / 6.0 * (v[0] + 2 * v[1] + 2 * v[2] + v[3]);
         atom.velocity += dt / 6.0 * (a[0] + 2 * a[1] + 2 * a[2] + a[3]);
         gsl_matrix_complex_scale(tmp_density_matrix_grad[0], gsl_complex{dt / 6, 0});
@@ -185,6 +186,7 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
         // update energies
         if (type == model_type::analytic) {
             ana_model->diagonal_analytic(atom.x, hamitonian, e[0], e[1], t[0], t[1]);
+            nac_x = ana_model->nac_analytic(atom.x);
         } else {
             num_model->hamitonian_cal(hamitonian, atom.x);
             diagonalize(hamitonian, e[0], e[1], tmp_t[0], tmp_t[1], wb, wb_vals, wb_vecs);
@@ -195,16 +197,28 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
                     gsl_vector_scale(tmp_t[j], -1);
                 gsl_vector_memcpy(t[j], tmp_t[j]);
             }
+            num_model->d_hamitonian_cal(hamitonian, atom.x);
+            nac_x = NAC(hamitonian, t[0], t[1], e[0], e[1], wb_dot_vec);
+
+            gsl_matrix_set_zero(hamitonian);
+            gsl_matrix_set(hamitonian, 0, 0, e[0]);
+            gsl_matrix_set(hamitonian, 1, 1, e[1]);
         }
         atom.potential_energy = e[atom.state];
         atom.kinetic_energy = 0.5 * atom.mass * atom.velocity * atom.velocity;
+        // update nac
+        gsl_matrix_set_zero(nac);
+        gsl_matrix_set(nac, 0, 1, nac_x);
+        gsl_matrix_set(nac, 1, 0, -nac_x);
 
         // calculate switching probability
         int k = atom.state;
         gsl_complex tmp_complex;
         tmp_complex = gsl_matrix_complex_get(density_matrix, 1 - k, k);
         tmp_complex = gsl_complex_conjugate(tmp_complex);
-        double b = -2 * GSL_REAL(gsl_complex_mul_real(tmp_complex, atom.velocity * gsl_matrix_get(nac, 1 - k, k)));
+        double b = 2 * GSL_IMAG(gsl_complex_mul_real(tmp_complex, gsl_matrix_get(hamitonian, 1 - k, k))) -
+                   2 * GSL_REAL(gsl_complex_mul_real(tmp_complex, atom.velocity * gsl_matrix_get(nac, 1 - k, k)));
+
         double prob = dt * b / GSL_REAL(gsl_matrix_complex_get(density_matrix, k, k));
         if (prob < 0) prob = 0;
 
