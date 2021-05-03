@@ -21,15 +21,18 @@ string format_time(long sec) {
     }
 }
 
+void
+log_settings(double start, double end, double interval, bool norm, bool ana, SHMethod method, bool debug, int cores);
+
 int main(int argc, char **argv) {
     // load log configure
     el::Configurations conf("log.conf");
     el::Loggers::reconfigureAllLoggers(conf);
 
     // add CLI params parser
-    CLI::App app{"Tully FSSH"};
-    CLI::App *single = app.add_subcommand("single", "run single point FSSH");
-    CLI::App *serial = app.add_subcommand("serial", "run serial FSSH");
+    CLI::App app{"Surface Hopping"};
+    CLI::App *single = app.add_subcommand("single", "run single point surface hopping");
+    CLI::App *serial = app.add_subcommand("serial", "run serial surface hopping");
     app.require_subcommand(1, 1);
 
     int model_index = 1;
@@ -43,6 +46,10 @@ int main(int argc, char **argv) {
     double start = 1, end = 30;
     bool norm_flag = false;
     bool ana_flag = false;
+    map<string, SHMethod> map{{"FSSH",   FSSH},
+                              {"PCFSSH", PCFSSH},
+                              {"BCSH",   BCSH}};
+    SHMethod method = FSSH;
     string path("serial.dat");
 
     // shared options
@@ -50,19 +57,22 @@ int main(int argc, char **argv) {
     app.add_option("-m", model_index, "model index (1,2,3)");
     app.add_option("-t", dt, "simulate interval (default=1)");
     app.add_option("-c", cnt, "run times (default=2000)");
-    app.add_flag("--ana", ana_flag, "using analytic solution");
+    app.add_option("--sh", method, "surface hopping method (default=FSSH)")
+            ->transform(CLI::CheckedTransformer(map));
     // multi-threading option
     app.add_option("--cores", cores, "how many threads to use (default=1)");
+    // flags
+    app.add_flag("--ana", ana_flag, "using analytic solution");
     app.add_flag("--debug", debug_flag, "whether to log debug info");
     app.add_flag("--norm", norm_flag, "whether generate normal distribution momenta");
 
     // single options
-    single->add_option("-k", momenta, "atom momenta (0-30)");
+    single->add_option("-k", momenta, "atom momenta (0-30)")->required();
 
     // serial options
     serial->add_option("--serial", serial_interval, "serial momenta interval (default=1)");
-    serial->add_option("--start", start, "start momenta (default=1)");
-    serial->add_option("--end", end, "end momenta (default=30)");
+    serial->add_option("--min,-m", start, "start momenta")->required();
+    serial->add_option("--max,-M", end, "end momenta")->required();
     serial->add_option("--path", path, "path to log serial experiment data");
 
     CLI11_PARSE(app, argc, argv);
@@ -85,12 +95,7 @@ int main(int argc, char **argv) {
         mt19937 gen(rd());
         normal_distribution<double> distribution(momenta, momenta / 20);
 
-        // log start settings
-        LOG(INFO) << "simulate state:" << start_state << " model:" << model_index << " momenta:"
-                  << momenta << " dt:" << dt << " times:" << cnt << (norm_flag ? " norm" : "")
-                  << (ana_flag ? " analytic" : " numerical");
-        LOG(INFO) << "runtime debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
-
+        log_settings(start, end, serial_interval, norm_flag, ana_flag, method, debug_flag, cores);
 
         // start here
         const auto start_time = chrono::steady_clock::now();
@@ -101,7 +106,7 @@ int main(int argc, char **argv) {
                 m = distribution(gen);
             }
             auto res = pool.enqueue(run_single_trajectory, num_models[model_index - 1], ana_models[model_index - 1],
-                                    start_state, m, dt, debug_flag, type);
+                                    start_state, m, dt, debug_flag, type, method);
             result_queue.push(move(res));
         };
         while (!result_queue.empty()) {
@@ -111,24 +116,21 @@ int main(int argc, char **argv) {
         }
 
         // if debug then log settings again and result
-        if (debug_flag) {
-            LOG(INFO) << "simulate state:" << start_state << " model:" << model_index << " momenta:"
-                      << momenta << " dt:" << dt << " times:" << cnt << (norm_flag ? " norm" : "")
-                      << (ana_flag ? " analytic" : " numerical");
-            LOG(INFO) << "runtime debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
-        }
+        if (debug_flag)
+            log_settings(start, end, serial_interval, norm_flag, ana_flag, method, debug_flag, cores);
 
         LOG(INFO) << "lower trans " << 100.0 * result[0] / cnt << "%";
         LOG(INFO) << "upper trans " << 100.0 * result[1] / cnt << "%";
         LOG(INFO) << "lower reflect " << 100.0 * result[2] / cnt << "%";
         LOG(INFO) << "upper reflect " << 100.0 * result[3] / cnt << "%";
+        LOG(INFO) << momenta << ' ' << 1.0 * result[0] / cnt << ' ' << 1.0 * result[1] / cnt << ' '
+                  << 1.0 * result[2] / cnt << ' ' << 1.0 * result[3] / cnt;
         long seconds =
                 chrono::duration_cast<chrono::seconds>(chrono::steady_clock::now() - start_time).count() * cores;
         LOG(INFO) << "Total time:" << format_time(seconds);
     } else if (app.got_subcommand(serial)) {
-        LOG(INFO) << "serial start:" << start << " end:" << end << " interval:" << serial_interval
-                  << (norm_flag ? " norm" : "") << (ana_flag ? " analytic" : " numerical");
-        LOG(INFO) << "runtime debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
+        log_settings(start, end, serial_interval, norm_flag, ana_flag, method, debug_flag, cores);
+
         ofstream fs;
         fs.open(path);
         if (cnt < 2000) cnt = 2000;
@@ -147,7 +149,7 @@ int main(int argc, char **argv) {
                     m = distribution(gen);
                 }
                 auto res = pool.enqueue(run_single_trajectory, num_models[model_index - 1], ana_models[model_index - 1],
-                                        start_state, m, dt, debug_flag, type);
+                                        start_state, m, dt, debug_flag, type, method);
                 result_queue.push(move(res));
             }
             while (!result_queue.empty()) {
@@ -164,4 +166,11 @@ int main(int argc, char **argv) {
         LOG(INFO) << "Total time:" << format_time(seconds);
         fs.close();
     }
+}
+
+void log_settings(const double start, const double end, const double interval, const bool norm, const bool ana,
+                  const SHMethod method, const bool debug, const int cores) {
+    LOG(INFO) << "serial start:" << start << " end:" << end << " interval:" << interval << (norm ? " norm" : "")
+              << (ana ? " analytic" : " numerical") << ' ' << SHMethodName[method];
+    LOG(INFO) << "runtime debug:" << (debug ? "yes" : "no") << " cores:" << cores;
 }

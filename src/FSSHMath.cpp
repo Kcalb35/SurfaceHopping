@@ -14,12 +14,20 @@
 #include <iomanip>
 
 
-const char *FinalPositionName[] = {
-        "lower_transmission",
-        "upper_transmission",
-        "lower_reflection",
-        "upper_reflection"
-};
+void set_hamitonian_z_by_pc(gsl_matrix_complex *hamitonian_z, const double e[], const double v_active,
+                            const double mass, const int state) {
+    double p_tmp[2];
+    double p_active = v_active * mass;
+    p_tmp[state] = p_active;
+    if (p_active * p_active / 2 / mass + e[state] < e[1 - state]) {
+        p_tmp[1 - state] = 0;
+    } else {
+        p_tmp[1 - state] = sqrt(p_active * p_active + 2 * mass * (e[state] - e[1 - state]));
+    }
+    gsl_matrix_complex_set_zero(hamitonian_z);
+    gsl_matrix_complex_set(hamitonian_z, 0, 0, gsl_complex{-p_active * p_tmp[0] / mass, 0});
+    gsl_matrix_complex_set(hamitonian_z, 1, 1, gsl_complex{-p_active * p_tmp[1] / mass, 0});
+}
 
 double integral(gsl_vector *left, gsl_matrix *op, gsl_vector *right, gsl_vector *wb) {
     gsl_vector_set_zero(wb);
@@ -50,21 +58,30 @@ double NAC(gsl_matrix *dh, gsl_vector *s1, gsl_vector *s2, double e1,
     return result / (e2 - e1);
 }
 
+void set_hamitonian_z_by_e(gsl_matrix_complex *h, const double e[]) {
+    gsl_matrix_complex_set_zero(h);
+    for (int i = 0; i < h->size1; ++i) {
+        gsl_matrix_complex_set(h, i, i, gsl_complex{e[i], 0});
+    }
+}
 
-void density_matrix_grad_cal(gsl_matrix_complex *density_grad, gsl_matrix_complex *density, gsl_matrix *hamitonian,
-                             double v, gsl_matrix *nac) {
+void
+density_matrix_grad_cal(gsl_matrix_complex *density_grad, gsl_matrix_complex *density, gsl_matrix_complex *hamitonian,
+                        double v, gsl_matrix *nac) {
     for (int i = 0; i < 2; ++i) {
         for (int j = 0; j < 2; ++j) {
             gsl_complex grad_complex = gsl_complex{0, 0};
             for (int k = 0; k < 2; ++k) {
                 grad_complex = gsl_complex_add(grad_complex,
                                                gsl_complex_mul(gsl_matrix_complex_get(density, k, j),
-                                                               gsl_complex{gsl_matrix_get(hamitonian, i, k),
-                                                                           -v * gsl_matrix_get(nac, i, k)}));
+                                                               gsl_complex_sub_imag(
+                                                                       gsl_matrix_complex_get(hamitonian, i, k),
+                                                                       v * gsl_matrix_get(nac, i, k))));
                 grad_complex = gsl_complex_sub(grad_complex,
                                                gsl_complex_mul(gsl_matrix_complex_get(density, i, k),
-                                                               gsl_complex{gsl_matrix_get(hamitonian, k, j),
-                                                                           -v * gsl_matrix_get(nac, k, j)}));
+                                                               gsl_complex_sub_imag(
+                                                                       gsl_matrix_complex_get(hamitonian, k, j),
+                                                                       v * gsl_matrix_get(nac, k, j))));
             }
             grad_complex = gsl_complex_div_imag(grad_complex, 1);
             gsl_matrix_complex_set(density_grad, i, j, grad_complex);
@@ -74,7 +91,7 @@ void density_matrix_grad_cal(gsl_matrix_complex *density_grad, gsl_matrix_comple
 
 FinalPosition
 run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int start_state, double start_momenta,
-                      double dt, bool debug, model_type type) {
+                      double dt, bool debug, model_type type, SHMethod method) {
 
     if (type == model_type::analytic && ana_model == nullptr || type == model_type::numerical && num_model == nullptr)
         throw std::runtime_error("not supported");
@@ -139,7 +156,7 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
             v[i] = tmp_v;
             if (type == model_type::analytic) {
                 a[i] = -ana_model->energy_grad_analytic(tmp_x, atom.state) / atom.mass;
-                ana_model->diagonal_analytic(tmp_x, hamitonian, e[0], e[1], t[0], t[1]);
+                ana_model->diagonal_analytic(tmp_x, hamitonian, e[0], e[1], tmp_t[0], tmp_t[1]);
                 nac_x = ana_model->nac_analytic(tmp_x);
             } else {
                 num_model->hamitonian_cal(hamitonian, tmp_x);
@@ -154,15 +171,20 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
                 // set d_hamitonian
                 num_model->d_hamitonian_cal(hamitonian, tmp_x);
                 nac_x = NAC(hamitonian, tmp_t[0], tmp_t[1], e[0], e[1], wb_dot_vec);
-                a[i] = -integral(t[atom.state], hamitonian, t[atom.state], wb_dot_vec) / atom.mass;
-                // set hamitonian
-                gsl_matrix_set_zero(hamitonian);
-                gsl_matrix_set(hamitonian, 0, 0, e[0]);
-                gsl_matrix_set(hamitonian, 1, 1, e[1]);
+                a[i] = -integral(tmp_t[atom.state], hamitonian, tmp_t[atom.state], wb_dot_vec) / atom.mass;
+            }
+            switch (method) {
+                case FSSH:
+                    set_hamitonian_z_by_e(hamitonian_z, e);
+                    break;
+                case PCFSSH:
+                case BCSH:
+                    set_hamitonian_z_by_pc(hamitonian_z, e, tmp_v, atom.mass, atom.state);
+                    break;
             }
             gsl_matrix_set(nac, 0, 1, nac_x);
             gsl_matrix_set(nac, 1, 0, -nac_x);
-            density_matrix_grad_cal(tmp_density_matrix_grad[i], tmp_density_matrix, hamitonian, tmp_v, nac);
+            density_matrix_grad_cal(tmp_density_matrix_grad[i], tmp_density_matrix, hamitonian_z, tmp_v, nac);
             if (i == 3) break;
             tmp_x = atom.x + rk4dt[i] * v[i];
             tmp_v = atom.velocity + rk4dt[i] * a[i];
@@ -199,24 +221,28 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
             }
             num_model->d_hamitonian_cal(hamitonian, atom.x);
             nac_x = NAC(hamitonian, t[0], t[1], e[0], e[1], wb_dot_vec);
-
-            gsl_matrix_set_zero(hamitonian);
-            gsl_matrix_set(hamitonian, 0, 0, e[0]);
-            gsl_matrix_set(hamitonian, 1, 1, e[1]);
         }
         atom.potential_energy = e[atom.state];
         atom.kinetic_energy = 0.5 * atom.mass * atom.velocity * atom.velocity;
         // update nac
-        gsl_matrix_set_zero(nac);
         gsl_matrix_set(nac, 0, 1, nac_x);
         gsl_matrix_set(nac, 1, 0, -nac_x);
+        switch (method) {
+            case FSSH:
+                set_hamitonian_z_by_e(hamitonian_z, e);
+                break;
+            case PCFSSH:
+            case BCSH:
+                set_hamitonian_z_by_pc(hamitonian_z, e, atom.velocity, atom.mass, atom.state);
+                break;
+        }
 
         // calculate switching probability
         int k = atom.state;
         gsl_complex tmp_complex;
         tmp_complex = gsl_matrix_complex_get(density_matrix, 1 - k, k);
         tmp_complex = gsl_complex_conjugate(tmp_complex);
-        double b = 2 * GSL_IMAG(gsl_complex_mul_real(tmp_complex, gsl_matrix_get(hamitonian, 1 - k, k))) -
+        double b = 2 * GSL_IMAG(gsl_complex_mul(tmp_complex, gsl_matrix_complex_get(hamitonian_z, 1 - k, k))) -
                    2 * GSL_REAL(gsl_complex_mul_real(tmp_complex, atom.velocity * gsl_matrix_get(nac, 1 - k, k)));
 
         double prob = dt * b / GSL_REAL(gsl_matrix_complex_get(density_matrix, k, k));
@@ -275,6 +301,7 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
     gsl_vector_free(t[0]);
     gsl_vector_free(t[1]);
     gsl_matrix_free(hamitonian);
+    gsl_matrix_complex_free(hamitonian_z);
     gsl_matrix_complex_free(density_matrix);
     gsl_matrix_complex_free(tmp_density_matrix);
 

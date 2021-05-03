@@ -8,7 +8,7 @@ if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
             "MinSizeRel" "RelWithDebInfo")
 endif ()
 
-project(FSSH)
+project(SH)
 include(CheckCXXCompilerFlag)
 CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
 if (COMPILER_SUPPORTS_CXX11)
@@ -19,23 +19,23 @@ endif ()
 add_library(log ${PROJECT_SOURCE_DIR}/lib/easyloggingpp/src/easylogging++.cc)
 target_include_directories(log PUBLIC ${PROJECT_SOURCE_DIR}/lib/easyloggingpp/src)
 
-# target FSSH lib
-add_library(FSSHLib STATIC
+# target SH lib
+add_library(SHLib STATIC
         src/FSSHMath.cpp
         src/gslExtra.cpp src/ModelBase.cpp)
-target_include_directories(FSSHLib
+target_include_directories(SHLib
         PUBLIC
         ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(FSSHLib PUBLIC gsl.a gslcblas.a log)
+target_link_libraries(SHLib PUBLIC gsl.a gslcblas.a log)
 
 # target executable
 add_executable(${PROJECT_NAME} main.cpp)
 target_link_libraries(${PROJECT_NAME}
         PUBLIC
-        FSSHLib pthread)
+        SHLib pthread)
 
 add_executable(surface ${PROJECT_SOURCE_DIR}/tests/energySurface.cpp)
-target_link_libraries(surface PUBLIC FSSHLib)
+target_link_libraries(surface PUBLIC SHLib)
 
 add_executable(diagonal ${PROJECT_SOURCE_DIR}/tests/TestDiagonal.cpp)
-target_link_libraries(diagonal FSSHLib)
+target_link_libraries(diagonal SHLib)
