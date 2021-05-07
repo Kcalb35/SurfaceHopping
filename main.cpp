@@ -11,18 +11,12 @@ INITIALIZE_EASYLOGGINGPP
 
 using namespace std;
 
-string format_time(long sec) {
-    if (sec < 60) {
-        return to_string(sec) + "s";
-    } else if (sec < 3600) {
-        return to_string(sec / 60.0) + "min";
-    } else {
-        return to_string(sec / 3600.0) + "h";
-    }
-}
+string format_time(long sec);
 
-void
-log_settings(double start, double end, double interval, bool norm, bool ana, SHMethod method, bool debug, int cores);
+void log_single(int start_state, int model_index, double momenta, double dt, int cnt, bool norm_flag, bool ana_flag,
+                SHMethod method);
+
+void log_runtime(bool debug_flag, int cores);
 
 int main(int argc, char **argv) {
     // load log configure
@@ -95,7 +89,7 @@ int main(int argc, char **argv) {
         mt19937 gen(rd());
         normal_distribution<double> distribution(momenta, momenta / 20);
 
-        log_settings(start, end, serial_interval, norm_flag, ana_flag, method, debug_flag, cores);
+        log_single(start_state, model_index, momenta, dt, cnt, norm_flag, ana_flag, method);
 
         // start here
         const auto start_time = chrono::steady_clock::now();
@@ -117,7 +111,7 @@ int main(int argc, char **argv) {
 
         // if debug then log settings again and result
         if (debug_flag)
-            log_settings(start, end, serial_interval, norm_flag, ana_flag, method, debug_flag, cores);
+            log_single(start_state, model_index, momenta, dt, cnt, norm_flag, ana_flag, method);
 
         LOG(INFO) << "lower trans " << 100.0 * result[0] / cnt << "%";
         LOG(INFO) << "upper trans " << 100.0 * result[1] / cnt << "%";
@@ -129,7 +123,9 @@ int main(int argc, char **argv) {
                 chrono::duration_cast<chrono::seconds>(chrono::steady_clock::now() - start_time).count() * cores;
         LOG(INFO) << "Total time:" << format_time(seconds);
     } else if (app.got_subcommand(serial)) {
-        log_settings(start, end, serial_interval, norm_flag, ana_flag, method, debug_flag, cores);
+        LOG(INFO) << "serial start:" << start << " end:" << end << " interval:" << serial_interval
+                  << (norm_flag ? " norm" : "") << (ana_flag ? " analytic" : " numerical");
+        log_runtime(debug_flag, cores);
 
         ofstream fs;
         fs.open(path);
@@ -140,8 +136,7 @@ int main(int argc, char **argv) {
             random_device rd;
             mt19937 gen(rd());
             normal_distribution<double> distribution(p, p / 20);
-            LOG(INFO) << "simulate state:" << start_state << " model:" << model_index << " momenta:"
-                      << p << " dt:" << dt << " times:" << cnt;
+            log_single(start_state, model_index, p, dt, cnt, norm_flag, ana_flag, method);
             int result[4] = {0, 0, 0, 0};
             for (int i = 0; i < cnt; ++i) {
                 double m = p;
@@ -168,9 +163,23 @@ int main(int argc, char **argv) {
     }
 }
 
-void log_settings(const double start, const double end, const double interval, const bool norm, const bool ana,
-                  const SHMethod method, const bool debug, const int cores) {
-    LOG(INFO) << "serial start:" << start << " end:" << end << " interval:" << interval << (norm ? " norm" : "")
-              << (ana ? " analytic" : " numerical") << ' ' << SHMethodName[method];
-    LOG(INFO) << "runtime debug:" << (debug ? "yes" : "no") << " cores:" << cores;
+void log_single(const int start_state, const int model_index, const double momenta, const double dt, const int cnt,
+                const bool norm_flag, const bool ana_flag, const SHMethod method) {
+    LOG(INFO) << "simulate state:" << start_state << " model:" << model_index << " momenta:"
+              << momenta << " dt:" << dt << " times:" << cnt << (norm_flag ? " norm" : "")
+              << (ana_flag ? " analytic" : " numerical") << ' ' << SHMethodName[method];
+}
+
+void log_runtime(const bool debug_flag, const int cores) {
+    LOG(INFO) << "runtime debug:" << (debug_flag ? "yes" : "no") << " cores:" << cores;
+}
+
+string format_time(long sec) {
+    if (sec < 60) {
+        return to_string(sec) + "s";
+    } else if (sec < 3600) {
+        return to_string(sec / 60.0) + "min";
+    } else {
+        return to_string(sec / 3600.0) + "h";
+    }
 }

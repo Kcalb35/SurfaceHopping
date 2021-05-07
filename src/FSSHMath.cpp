@@ -22,7 +22,7 @@ void set_hamitonian_z_by_pc(gsl_matrix_complex *hamitonian_z, const double e[], 
     if (p_active * p_active / 2 / mass + e[state] < e[1 - state]) {
         p_tmp[1 - state] = 0;
     } else {
-        p_tmp[1 - state] = sqrt(p_active * p_active + 2 * mass * (e[state] - e[1 - state]));
+        p_tmp[1 - state] = sgn(p_active) * sqrt(p_active * p_active + 2 * mass * (e[state] - e[1 - state]));
     }
     gsl_matrix_complex_set_zero(hamitonian_z);
     gsl_matrix_complex_set(hamitonian_z, 0, 0, gsl_complex{-p_active * p_tmp[0] / mass, 0});

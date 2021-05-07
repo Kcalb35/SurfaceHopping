@@ -7,5 +7,5 @@ data/*
 
 # files
 *.log
-FSSH
+SH
 *.dat
