@@ -42,7 +42,7 @@ int main(int argc, char **argv) {
     bool ana_flag = false;
     map<string, SHMethod> map{{"FSSH",   FSSH},
                               {"PCFSSH", PCFSSH},
-                              {"BCSH",   BCSH}};
+                              {"PCBCSH",   PCBCSH}};
     SHMethod method = FSSH;
     string path("serial.dat");
 

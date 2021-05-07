@@ -178,7 +178,7 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
                     set_hamitonian_z_by_e(hamitonian_z, e);
                     break;
                 case PCFSSH:
-                case BCSH:
+                case PCBCSH:
                     set_hamitonian_z_by_pc(hamitonian_z, e, tmp_v, atom.mass, atom.state);
                     break;
             }
@@ -232,7 +232,7 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
                 set_hamitonian_z_by_e(hamitonian_z, e);
                 break;
             case PCFSSH:
-            case BCSH:
+            case PCBCSH:
                 set_hamitonian_z_by_pc(hamitonian_z, e, atom.velocity, atom.mass, atom.state);
                 break;
         }

@@ -51,13 +51,13 @@ static const char *ModelTypeName[]{
 enum SHMethod {
     FSSH,
     PCFSSH,
-    BCSH
+    PCBCSH
 };
 
 static const char *SHMethodName[]{
         "FSSH",
         "PC-FSSH",
-        "BCSH"
+        "PC-BCSH"
 };
 
 void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2,
