@@ -40,9 +40,10 @@ int main(int argc, char **argv) {
     double start = 1, end = 30;
     bool norm_flag = false;
     bool ana_flag = false;
+    vector<double> multiple_momenta;
     map<string, SHMethod> map{{"FSSH",   FSSH},
                               {"PCFSSH", PCFSSH},
-                              {"PCBCSH",   PCBCSH}};
+                              {"PCBCSH", PCBCSH}};
     SHMethod method = FSSH;
     string path("serial.dat");
 
@@ -65,8 +66,9 @@ int main(int argc, char **argv) {
 
     // serial options
     serial->add_option("--serial", serial_interval, "serial momenta interval (default=1)");
-    serial->add_option("--min,-m", start, "start momenta")->required();
-    serial->add_option("--max,-M", end, "end momenta")->required();
+    serial->add_option("--min,-m", start, "start momenta");
+    serial->add_option("--max,-M", end, "end momenta");
+    serial->add_option("--multi", multiple_momenta, "multiple momenta");
     serial->add_option("--path", path, "path to log serial experiment data");
 
     CLI11_PARSE(app, argc, argv);
@@ -82,6 +84,9 @@ int main(int argc, char **argv) {
     ECR ecr;
     NumericalModel *num_models[3] = {&sac, &dac, &ecr};
     AnalyticModel *ana_models[3] = {nullptr, nullptr, &ecr};
+    double l = -10;
+    double r = 10;
+    if (model_index == 3) l = -22;
 
     // single momenta experiment
     if (app.got_subcommand(single)) {
@@ -100,7 +105,7 @@ int main(int argc, char **argv) {
                 m = distribution(gen);
             }
             auto res = pool.enqueue(run_single_trajectory, num_models[model_index - 1], ana_models[model_index - 1],
-                                    start_state, m, dt, debug_flag, type, method);
+                                    start_state, m, dt, debug_flag, type, method, l, r);
             result_queue.push(move(res));
         };
         while (!result_queue.empty()) {
@@ -123,6 +128,20 @@ int main(int argc, char **argv) {
                 chrono::duration_cast<chrono::seconds>(chrono::steady_clock::now() - start_time).count() * cores;
         LOG(INFO) << "Total time:" << format_time(seconds);
     } else if (app.got_subcommand(serial)) {
+        if (!multiple_momenta.empty() && (start < 0 || end < 0)) {
+            LOG(INFO) << "please input serial";
+            return 1;
+        }
+
+        // prepare momenta
+        if (multiple_momenta.empty()) {
+            double k = start;
+            while (k < end) {
+                multiple_momenta.push_back(k);
+                k += serial_interval;
+            }
+        }
+
         LOG(INFO) << "serial start:" << start << " end:" << end << " interval:" << serial_interval
                   << (norm_flag ? " norm" : "") << (ana_flag ? " analytic" : " numerical");
         log_runtime(debug_flag, cores);
@@ -131,8 +150,7 @@ int main(int argc, char **argv) {
         fs.open(path);
         if (cnt < 2000) cnt = 2000;
         const auto start_time = chrono::steady_clock::now();
-        double p = start;
-        while (p <= end) {
+        for (double p: multiple_momenta) {
             random_device rd;
             mt19937 gen(rd());
             normal_distribution<double> distribution(p, p / 20);
@@ -144,7 +162,7 @@ int main(int argc, char **argv) {
                     m = distribution(gen);
                 }
                 auto res = pool.enqueue(run_single_trajectory, num_models[model_index - 1], ana_models[model_index - 1],
-                                        start_state, m, dt, debug_flag, type, method);
+                                        start_state, m, dt, debug_flag, type, method, l, r);
                 result_queue.push(move(res));
             }
             while (!result_queue.empty()) {

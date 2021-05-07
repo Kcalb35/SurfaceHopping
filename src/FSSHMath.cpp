@@ -14,19 +14,20 @@
 #include <iomanip>
 
 
-void set_hamitonian_z_by_pc(gsl_matrix_complex *hamitonian_z, const double e[], const double v_active,
-                            const double mass, const int state) {
-    double p_tmp[2];
+void cal_momenta(const double e[], const double mass, const int state, const double v_active, double p[]) {
     double p_active = v_active * mass;
-    p_tmp[state] = p_active;
+    p[state] = p_active;
     if (p_active * p_active / 2 / mass + e[state] < e[1 - state]) {
-        p_tmp[1 - state] = 0;
+        p[1 - state] = 0;
     } else {
-        p_tmp[1 - state] = sgn(p_active) * sqrt(p_active * p_active + 2 * mass * (e[state] - e[1 - state]));
+        p[1 - state] = sgn(p_active) * sqrt(p_active * p_active + 2 * mass * (e[state] - e[1 - state]));
     }
+}
+
+void set_hamitonian_z_by_pc(gsl_matrix_complex *hamitonian_z, const double p[], const double mass, const int state) {
     gsl_matrix_complex_set_zero(hamitonian_z);
-    gsl_matrix_complex_set(hamitonian_z, 0, 0, gsl_complex{-p_active * p_tmp[0] / mass, 0});
-    gsl_matrix_complex_set(hamitonian_z, 1, 1, gsl_complex{-p_active * p_tmp[1] / mass, 0});
+    gsl_matrix_complex_set(hamitonian_z, 0, 0, gsl_complex{-p[state] * p[0] / mass, 0});
+    gsl_matrix_complex_set(hamitonian_z, 1, 1, gsl_complex{-p[state] * p[1] / mass, 0});
 }
 
 double integral(gsl_vector *left, gsl_matrix *op, gsl_vector *right, gsl_vector *wb) {
@@ -91,7 +92,7 @@ density_matrix_grad_cal(gsl_matrix_complex *density_grad, gsl_matrix_complex *de
 
 FinalPosition
 run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int start_state, double start_momenta,
-                      double dt, bool debug, model_type type, SHMethod method) {
+                      double dt, bool debug, model_type type, SHMethod method, const double left, const double right) {
 
     if (type == model_type::analytic && ana_model == nullptr || type == model_type::numerical && num_model == nullptr)
         throw std::runtime_error("not supported");
@@ -121,6 +122,8 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
     auto wb_dot_vec = gsl_vector_calloc(2);
 
     double e[] = {0, 0};
+    double p_prev[] = {0, 0};
+    double p_now[]{0, 0};
     int log_cnt = 0;
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -146,7 +149,7 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
     double rk4dt[]{dt / 2, dt / 2, dt, 0};
     double v[4], a[4], tmp_x, tmp_v;
     double nac_x;
-    while ((atom.velocity > 0 && atom.x <= 10) || (atom.velocity < 0 && atom.x > -10)) {
+    while ((atom.velocity > 0 && atom.x <= right) || (atom.velocity < 0 && atom.x > left)) {
         // using RK4
         tmp_x = atom.x;
         tmp_v = atom.velocity;
@@ -179,7 +182,8 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
                     break;
                 case PCFSSH:
                 case PCBCSH:
-                    set_hamitonian_z_by_pc(hamitonian_z, e, tmp_v, atom.mass, atom.state);
+                    cal_momenta(e, atom.mass, atom.state, tmp_v, p_now);
+                    set_hamitonian_z_by_pc(hamitonian_z, p_now, atom.mass, atom.state);
                     break;
             }
             gsl_matrix_set(nac, 0, 1, nac_x);
@@ -232,8 +236,21 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
                 set_hamitonian_z_by_e(hamitonian_z, e);
                 break;
             case PCFSSH:
+                cal_momenta(e, atom.mass, atom.state, atom.velocity, p_now);
+                set_hamitonian_z_by_pc(hamitonian_z, p_now, atom.mass, atom.state);
+                break;
             case PCBCSH:
-                set_hamitonian_z_by_pc(hamitonian_z, e, atom.velocity, atom.mass, atom.state);
+                cal_momenta(e, atom.mass, atom.state, atom.velocity, p_now);
+                set_hamitonian_z_by_pc(hamitonian_z, p_now, atom.mass, atom.state);
+                // perform BC
+                if (p_prev[atom.state] * p_now[atom.state] < 0 || p_prev[1 - atom.state] * p_now[1 - atom.state] < 0) {
+                    gsl_complex ca = gsl_matrix_complex_get(density_matrix, atom.state, atom.state);
+                    gsl_matrix_complex_set_zero(density_matrix);
+                    gsl_matrix_complex_set(density_matrix, atom.state, atom.state,
+                                           gsl_complex_mul_real(ca, 1 / gsl_complex_abs(ca)));
+                }
+                p_prev[0] = p_now[0];
+                p_prev[1] = p_now[1];
                 break;
         }
 

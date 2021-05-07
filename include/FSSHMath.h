@@ -68,6 +68,6 @@ double NAC(gsl_matrix *dh, gsl_vector *s1, gsl_vector *s2, double e1,
 
 FinalPosition
 run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int start_state, double start_momenta,
-                      double dt, bool debug, model_type type, SHMethod method);
+                      double dt, bool debug, model_type type, SHMethod method, double left, double right);
 
 #endif //FSSH_FSSHMATH_H
