@@ -36,8 +36,14 @@ int main(int argc, char **argv) {
 
     auto wb = gsl_eigen_symmv_alloc(2);
     auto h = gsl_matrix_alloc(2, 2);
-    auto t1 = gsl_vector_alloc(2);
-    auto t2 = gsl_vector_alloc(2);
+    gsl_vector *tmp_t[] = {
+            gsl_vector_calloc(2),
+            gsl_vector_calloc(2)
+    };
+    gsl_vector *t[] = {
+            gsl_vector_calloc(2),
+            gsl_vector_calloc(2)
+    };
     auto tmp_e_vals = gsl_vector_alloc(2);
     auto tmp_e_vecs = gsl_matrix_alloc(2, 2);
     double e1, e2;
@@ -54,16 +60,22 @@ int main(int argc, char **argv) {
         double nac;
         if (ana_flag) {
             nac = ana_ms[model - 1]->nac_analytic(x);
-            ana_ms[model - 1]->diagonal_analytic(x, h, e1, e2, t1, t2);
+            ana_ms[model - 1]->diagonal_analytic(x, h, e1, e2, t[0], t[1]);
         } else {
             num_ms[model - 1]->hamitonian_cal(h, x);
-            diagonalize(h, e1, e2, t1, t2, wb, tmp_e_vals, tmp_e_vecs);
+            diagonalize(h, e1, e2, tmp_t[0], tmp_t[1], wb, tmp_e_vals, tmp_e_vecs);
+            for (int j = 0; j < 2; ++j) {
+                if (gsl_vector_get(tmp_t[j], 0) * gsl_vector_get(t[j], 0) < 0 ||
+                    gsl_vector_get(tmp_t[j], 1) * gsl_vector_get(t[j], 1) < 0)
+                    gsl_vector_scale(tmp_t[j], -1);
+                gsl_vector_memcpy(t[j], tmp_t[j]);
+            }
             num_ms[model - 1]->d_hamitonian_cal(h, x);
-            nac = NAC(h, t1, t2, e1, e2, tmp_e_vals);
+            nac = NAC(h, t[0], t[1], e1, e2, tmp_e_vals);
         }
-        f << x << '\t' << e1 << '\t' << e2 << '\t' << nac << '\t' << gsl_vector_get(t1, 0) << '\t'
-          << gsl_vector_get(t1, 1)
-          << '\t' << gsl_vector_get(t2, 0) << '\t' << gsl_vector_get(t2, 1) << endl;
+        f << x << '\t' << e1 << '\t' << e2 << '\t' << nac << '\t' << gsl_vector_get(t[0], 0) << '\t'
+          << gsl_vector_get(t[0], 1)
+          << '\t' << gsl_vector_get(t[1], 0) << '\t' << gsl_vector_get(t[1], 1) << endl;
     }
     f.close();
 }

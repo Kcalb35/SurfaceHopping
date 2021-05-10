@@ -130,7 +130,7 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
     std::uniform_real_distribution<> distrib(0, 1.0);
 
     // initial an atom
-    Atom atom;
+    Atom atom(2000);
     atom.velocity = start_momenta / atom.mass;
     atom.kinetic_energy = start_momenta * start_momenta / 2 / atom.mass;
     atom.x = -17.5 - 30 / start_momenta;
@@ -337,3 +337,9 @@ void Atom::log(const std::string &s) const {
               << potential_energy + kinetic_energy << " x:" << x << " state:" << state << " v:" << velocity;
 }
 
+Atom::Atom(double mass) : mass(mass),
+                          x(),
+                          kinetic_energy(),
+                          potential_energy(),
+                          velocity(),
+                          state() {}

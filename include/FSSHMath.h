@@ -12,14 +12,16 @@
 
 
 struct Atom {
-    double x{};
-    double mass = 2000;
-    double kinetic_energy{};
-    double velocity{};
-    double potential_energy{};
-    int state{};
+    double x;
+    double mass;
+    double kinetic_energy;
+    double velocity;
+    double potential_energy;
+    int state;
 
     void log(const std::string &s) const;
+
+    Atom(double mass);
 };
 
 
@@ -30,7 +32,7 @@ enum FinalPosition {
     upper_reflection
 };
 
-static const char *FinalPositionName[]{
+static const char *const FinalPositionName[]{
         "lower_transmission",
         "upper_transmission",
         "lower_reflection",
@@ -42,7 +44,7 @@ enum model_type {
     numerical
 };
 
-static const char *ModelTypeName[]{
+static const char *const ModelTypeName[]{
         "analytic",
         "numerical"
 };
