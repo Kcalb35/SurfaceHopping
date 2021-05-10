@@ -62,6 +62,13 @@ static const char *SHMethodName[]{
         "PC-BCSH"
 };
 
+double integral(gsl_vector *left, gsl_matrix *op, gsl_vector *right, gsl_vector *wb);
+
+
+void
+density_matrix_grad_cal(gsl_matrix_complex *density_grad, gsl_matrix_complex *density, gsl_matrix_complex *hamitonian,
+                        double v, gsl_matrix *nac);
+
 void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2,
                  gsl_eigen_symmv_workspace *wb, gsl_vector *e_value, gsl_matrix *e_vector);
 

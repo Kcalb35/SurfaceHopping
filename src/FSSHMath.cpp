@@ -236,21 +236,9 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
                 set_hamitonian_z_by_e(hamitonian_z, e);
                 break;
             case PCFSSH:
-                cal_momenta(e, atom.mass, atom.state, atom.velocity, p_now);
-                set_hamitonian_z_by_pc(hamitonian_z, p_now, atom.mass, atom.state);
-                break;
             case PCBCSH:
                 cal_momenta(e, atom.mass, atom.state, atom.velocity, p_now);
                 set_hamitonian_z_by_pc(hamitonian_z, p_now, atom.mass, atom.state);
-                // perform BC
-                if (p_prev[atom.state] * p_now[atom.state] < 0 || p_prev[1 - atom.state] * p_now[1 - atom.state] < 0) {
-                    gsl_complex ca = gsl_matrix_complex_get(density_matrix, atom.state, atom.state);
-                    gsl_matrix_complex_set_zero(density_matrix);
-                    gsl_matrix_complex_set(density_matrix, atom.state, atom.state,
-                                           gsl_complex_mul_real(ca, 1 / gsl_complex_abs(ca)));
-                }
-                p_prev[0] = p_now[0];
-                p_prev[1] = p_now[1];
                 break;
         }
 
@@ -283,6 +271,19 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
                     atom.log("jump_after");
                 }
             }
+        }
+
+        // BC
+        if (method == SHMethod::PCBCSH) {
+            // perform BC
+            if (p_prev[atom.state] * p_now[atom.state] < 0 || p_prev[1 - atom.state] * p_now[1 - atom.state] < 0) {
+                gsl_complex ca = gsl_matrix_complex_get(density_matrix, atom.state, atom.state);
+                gsl_matrix_complex_set_zero(density_matrix);
+                gsl_matrix_complex_set(density_matrix, atom.state, atom.state,
+                                       gsl_complex_mul_real(ca, 1 / gsl_complex_abs(ca)));
+            }
+            p_prev[0] = p_now[0];
+            p_prev[1] = p_now[1];
         }
 
         if (debug)

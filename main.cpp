@@ -18,6 +18,8 @@ void log_single(int start_state, int model_index, double momenta, double dt, int
 
 void log_runtime(bool debug_flag, int cores);
 
+void log_mid(const int result[]);
+
 int main(int argc, char **argv) {
     // load log configure
     el::Configurations conf("log.conf");
@@ -112,6 +114,7 @@ int main(int argc, char **argv) {
             auto res = result_queue.front().get();
             result_queue.pop();
             result[res] += 1;
+            log_mid(result);
         }
 
         // if debug then log settings again and result
@@ -169,6 +172,7 @@ int main(int argc, char **argv) {
                 auto res = result_queue.front().get();
                 result_queue.pop();
                 result[res] += 1;
+                log_mid(result);
             }
             fs << p << ' ' << 1.0 * result[0] / cnt << ' ' << 1.0 * result[1] / cnt << ' ' << 1.0 * result[2] / cnt
                << ' ' << 1.0 * result[3] / cnt << endl;
@@ -200,4 +204,11 @@ string format_time(long sec) {
     } else {
         return to_string(sec / 3600.0) + "h";
     }
+}
+
+
+void log_mid(const int result[]) {
+    double all = result[0] + result[1] + result[2] + result[3];
+    LOG(INFO) << all << ' ' << ' ' << 1.0 * result[0] / all << ' ' << 1.0 * result[1] / all << ' '
+              << 1.0 * result[2] / all << ' ' << 1.0 * result[3] / all;
 }

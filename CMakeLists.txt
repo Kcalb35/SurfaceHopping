@@ -28,6 +28,13 @@ target_include_directories(SHLib
         ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(SHLib PUBLIC gsl.a gslcblas.a log)
 
+# target MF lib
+add_library(MFLib STATIC
+        src/MF.cpp
+        )
+target_include_directories(MFLib PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(MFLib PUBLIC gsl.a gslcblas.a log)
+
 # target executable
 add_executable(${PROJECT_NAME} main.cpp)
 target_link_libraries(${PROJECT_NAME}
@@ -39,3 +46,6 @@ target_link_libraries(surface PUBLIC SHLib)
 
 add_executable(diagonal ${PROJECT_SOURCE_DIR}/tests/TestDiagonal.cpp)
 target_link_libraries(diagonal SHLib)
+
+add_executable(MF ${PROJECT_SOURCE_DIR}/MeanField.cpp)
+target_link_libraries(MF MFLib)
