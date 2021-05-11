@@ -7,7 +7,6 @@
 #include <gsl/gsl_eigen.h>
 #include <FSSHMath.h>
 #include "easylogging++.h"
-#include "CLI11.hpp"
 #include "ModelBase.h"
 
 INITIALIZE_EASYLOGGINGPP
@@ -20,18 +19,10 @@ double test(AnalyticModel *model, double x) {
 }
 
 int main(int argc, char **argv) {
-    CLI::App app("Energy surface and nac calculation");
     int model = 1;
-    string path("1.dat");
     bool ana_flag = false;
-
-    app.add_option("--model", model, "Tully model index");
-    app.add_option("--path", path, "save file path");
-    app.add_flag("--ana", ana_flag, "enable analytic solution");
-    CLI11_PARSE(app, argc, argv);
-
     ofstream f;
-    f.open(path);
+    f.open("data/model-1");
 
 
     auto wb = gsl_eigen_symmv_alloc(2);

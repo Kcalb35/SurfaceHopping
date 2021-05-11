@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.10)
 
 if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     message("Setting build type to 'Release' as none was specified.")
@@ -9,11 +9,16 @@ if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif ()
 
 project(SH)
-include(CheckCXXCompilerFlag)
-CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
-if (COMPILER_SUPPORTS_CXX11)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+set(CMAKE_CXX_STANDARD 11)
+
+find_package(OpenMP)
+if (OPENMP_FOUND)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif ()
+
+add_subdirectory(${PROJECT_SOURCE_DIR}/lib/toml11)
 
 # target log lib
 add_library(log ${PROJECT_SOURCE_DIR}/lib/easyloggingpp/src/easylogging++.cc)
@@ -36,10 +41,9 @@ target_include_directories(MFLib PUBLIC ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(MFLib PUBLIC gsl.a gslcblas.a log)
 
 # target executable
-add_executable(${PROJECT_NAME} main.cpp)
-target_link_libraries(${PROJECT_NAME}
-        PUBLIC
-        SHLib pthread)
+add_executable(${PROJECT_NAME} SurfaceHopping.cpp)
+target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/lib/toml11)
+target_link_libraries(${PROJECT_NAME} PUBLIC SHLib)
 
 add_executable(surface ${PROJECT_SOURCE_DIR}/tests/energySurface.cpp)
 target_link_libraries(surface PUBLIC SHLib)
@@ -48,4 +52,5 @@ add_executable(diagonal ${PROJECT_SOURCE_DIR}/tests/TestDiagonal.cpp)
 target_link_libraries(diagonal SHLib)
 
 add_executable(MF ${PROJECT_SOURCE_DIR}/MeanField.cpp)
-target_link_libraries(MF MFLib)
+target_include_directories(MF PRIVATE ${PROJECT_SOURCE_DIR}/lib/toml11)
+target_link_libraries(MF MFLib SHLib toml11::toml11)

@@ -1,10 +1,9 @@
-#include "MF.h"
+#include "FSSHMath.h"
 #include "easylogging++.h"
 #include "ModelBase.h"
-#include <random>
-#include <fstream>
-#include <omp.h>
 #include "toml.hpp"
+#include <random>
+#include <omp.h>
 
 INITIALIZE_EASYLOGGINGPP
 
@@ -22,24 +21,19 @@ struct Config {
     string save_path;
 };
 
-
-void parse_toml(toml::basic_value<toml::discard_comments, unordered_map, vector> &data, Config &conf);
+Config parse_toml(toml::basic_value<toml::discard_comments, unordered_map, vector> &data);
 
 int main(int argc, char **argv) {
     // load log configure
     el::Configurations conf("log.conf");
     el::Loggers::reconfigureAllLoggers(conf);
 
+
     // prepare variables
     SAC sac;
     DAC dac;
     ECR ecr;
     NumericalModel *models[3]{&sac, &dac, &ecr};
-    map<string, MFMethod> map{
-            {"EMF",    EMF},
-            {"BCMF_s", BCMF_s},
-            {"BCMF_w", BCMF_w}
-    };
     random_device rd;
     mt19937 gen(rd());
     double l = -10, r = 10;
@@ -49,15 +43,23 @@ int main(int argc, char **argv) {
     if (argc < 2)
         return 1;
     auto data = toml::parse(argv[1]);
-    auto &shared = toml::find(data, "shared");
-    Config runtime_conf;
-    parse_toml(shared, runtime_conf);
+    Config runtime_conf = parse_toml(toml::find(data, "shared"));
     ofstream file(runtime_conf.save_path);
     omp_set_num_threads(runtime_conf.cores);
     if (runtime_conf.model == 3) {
         l = -20;
     }
 
+    // validate method
+    map<string, SHMethod> map{{"FSSH",   FSSH},
+                              {"PCFSSH", PCFSSH},
+                              {"PCBCSH", PCBCSH}};
+    if (map.find(runtime_conf.method) == map.end()) {
+        LOG(ERROR) << "method " << runtime_conf.method << " not found";
+        return 1;
+    }
+
+    // get all parts
     if (!data.contains("single") && !data.contains("serial") && !data.contains("multi")) {
         LOG(ERROR) << "please input correct runtime settings";
         return 1;
@@ -85,16 +87,21 @@ int main(int argc, char **argv) {
     }
     sort(momenta_all.begin(), momenta_all.end());
 
-    for (auto &k: momenta_all) {
-        LOG(INFO) << "start " << k;
+    LOG(INFO) << "debug:" << (runtime_conf.debug ? "yes" : "no") << " cores:" << runtime_conf.cores;
+    for (auto &k:momenta_all) {
+        LOG(INFO) << "start state:" << runtime_conf.state << " model:" << runtime_conf.model << " momenta:"
+                  << k << " dt:" << runtime_conf.dt << " times:" << runtime_conf.count
+                  << (runtime_conf.debug ? " norm " : " ") << runtime_conf.method;
         double result[4]{0, 0, 0, 0};
-        auto tmp = new double[runtime_conf.count][4];
+        auto tmp = new int[runtime_conf.count][4]{};
         normal_distribution<double> distribution(k, k / 20);
 #pragma omp parallel for
         for (int i = 0; i < runtime_conf.count; ++i) {
             double k1 = runtime_conf.norm ? distribution(gen) : k;
-            run_single_MF(models[runtime_conf.model - 1], k1, runtime_conf.state, runtime_conf.dt,
-                          map[runtime_conf.method], tmp[i], r, l, runtime_conf.debug);
+            auto pos = run_single_trajectory(models[runtime_conf.model - 1], nullptr, runtime_conf.state, k1,
+                                             runtime_conf.dt, runtime_conf.debug, numerical, map[runtime_conf.method],
+                                             l, r);
+            tmp[i][pos] = 1;
         }
         for (int i = 0; i < runtime_conf.count; ++i) {
             for (int j = 0; j < 4; ++j) {
@@ -105,13 +112,15 @@ int main(int argc, char **argv) {
         for (int i = 0; i < 4; ++i)
             result[i] /= runtime_conf.count;
         file << k;
-        for (int i = 0; i < 4; ++i)
+        for (int i = 0; i < 4; i++)
             file << ' ' << result[i];
         file << endl;
+        LOG(INFO) << "finish " << k;
     }
 }
 
-void parse_toml(toml::basic_value<toml::discard_comments, unordered_map, vector> &data, Config &conf) {
+Config parse_toml(toml::basic_value<toml::discard_comments, unordered_map, vector> &data) {
+    Config conf;
     conf.model = toml::find<int>(data, "model");
     conf.state = toml::find<int>(data, "state");
     conf.cores = toml::find<int>(data, "cores");
@@ -121,4 +130,5 @@ void parse_toml(toml::basic_value<toml::discard_comments, unordered_map, vector>
     conf.norm = toml::find<bool>(data, "norm");
     conf.debug = toml::find<bool>(data, "debug");
     conf.save_path = toml::find<string>(data, "save_path");
+    return conf;
 }
