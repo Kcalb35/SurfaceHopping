@@ -286,15 +286,19 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
             p_prev[1] = p_now[1];
         }
 
+        log_cnt++;
         if (debug)
-            if (++log_cnt % int(10 / dt) == 0) {
-                log_cnt = 0;
+            if (log_cnt % int(10 / dt) == 0) {
                 atom.log("move");
 //                log_matrix(density_matrix, 2, 2, "density_matrix");
 //                LOG(INFO) << zeta << '/' << prob;
                 LOG(INFO) << GSL_REAL(gsl_matrix_complex_get(density_matrix, 0, 0)) +
                              GSL_REAL(gsl_matrix_complex_get(density_matrix, 1, 1));
             }
+        if (log_cnt * dt > 8e6) {
+            LOG(INFO) << "timeout k:" << start_momenta;
+            return FinalPosition::timeout;
+        }
     }
 
     // judge final state

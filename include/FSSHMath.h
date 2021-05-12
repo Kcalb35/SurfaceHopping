@@ -29,7 +29,8 @@ enum FinalPosition {
     lower_transmission,
     upper_transmission,
     lower_reflection,
-    upper_reflection
+    upper_reflection,
+    timeout
 };
 
 static const char *const FinalPositionName[]{

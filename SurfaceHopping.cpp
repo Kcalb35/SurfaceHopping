@@ -92,8 +92,8 @@ int main(int argc, char **argv) {
         LOG(INFO) << "start state:" << runtime_conf.state << " model:" << runtime_conf.model << " momenta:"
                   << k << " dt:" << runtime_conf.dt << " times:" << runtime_conf.count
                   << (runtime_conf.debug ? " norm " : " ") << runtime_conf.method;
-        double result[4]{0, 0, 0, 0};
-        auto tmp = new int[runtime_conf.count][4]{};
+        double result[5]{0, 0, 0, 0, 0};
+        auto tmp = new int[runtime_conf.count][5]{};
         normal_distribution<double> distribution(k, k / 20);
 #pragma omp parallel for
         for (int i = 0; i < runtime_conf.count; ++i) {
@@ -104,18 +104,18 @@ int main(int argc, char **argv) {
             tmp[i][pos] = 1;
         }
         for (int i = 0; i < runtime_conf.count; ++i) {
-            for (int j = 0; j < 4; ++j) {
+            for (int j = 0; j < 5; ++j) {
                 result[j] += tmp[i][j];
             }
         }
         delete[] tmp;
         for (int i = 0; i < 4; ++i)
-            result[i] /= runtime_conf.count;
+            result[i] /= (runtime_conf.count - result[4]);
         file << k;
         for (int i = 0; i < 4; i++)
             file << ' ' << result[i];
         file << endl;
-        LOG(INFO) << "finish " << k;
+        LOG(INFO) << "finish " << k << " timeout: " << result[4] / runtime_conf.count;
     }
 }
 
