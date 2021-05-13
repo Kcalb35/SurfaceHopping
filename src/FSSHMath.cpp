@@ -295,7 +295,7 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
                 LOG(INFO) << GSL_REAL(gsl_matrix_complex_get(density_matrix, 0, 0)) +
                              GSL_REAL(gsl_matrix_complex_get(density_matrix, 1, 1));
             }
-        if (log_cnt * dt > 8e6) {
+        if (log_cnt * dt > 1e7) {
             LOG(INFO) << "timeout k:" << start_momenta;
             return FinalPosition::timeout;
         }
