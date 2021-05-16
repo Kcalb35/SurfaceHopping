@@ -61,6 +61,14 @@ double ECR::energy_grad_analytic(double x, int state) {
     return d;
 }
 
+double ECR::sigma_x(double k) {
+    return 10 / k;
+}
+
+double ECR::sigma_p(double k) {
+    return k / 20;
+}
+
 
 void SAC::hamitonian_cal(gsl_matrix *m, double x) {
     int flag = (x > 0 ? 1 : -1);
@@ -81,6 +89,14 @@ void SAC::d_hamitonian_cal(gsl_matrix *m, double x) {
     gsl_matrix_set(m, 0, 1, h12);
 }
 
+double SAC::sigma_x(double k) {
+    return 10 / k;
+}
+
+double SAC::sigma_p(double k) {
+    return k / 20;
+}
+
 
 void DAC::hamitonian_cal(gsl_matrix *m, double x) {
 
@@ -97,4 +113,112 @@ void DAC::d_hamitonian_cal(gsl_matrix *m, double x) {
     gsl_matrix_set(m, 1, 1, 2 * 0.1 * 0.28 * x * exp(-0.28 * x * x));
     gsl_matrix_set(m, 1, 0, d12);
     gsl_matrix_set(m, 0, 1, d12);
+}
+
+double DAC::sigma_x(double k) {
+    return 10 / k;
+}
+
+double DAC::sigma_p(double k) {
+    return k / 20;
+}
+
+void DBG::d_hamitonian_cal(gsl_matrix *m, double x) {
+    gsl_matrix_set(m, 0, 0, 0);
+    gsl_matrix_set(m, 1, 1, 0);
+    double d, z = 10, c = 0.9, b = 0.1;
+    if (x < -z) {
+        d = b * c * exp(c * (x - z)) - b * c * exp(c * (x + z));
+    } else if (x < z) {
+        d = b * c * exp(c * (x - z)) - b * c * exp(-c * (x + z));
+    } else {
+        d = -b * c * exp(-c * (x + z)) + b * c * exp(-c * (x - z));
+    }
+    gsl_matrix_set(m, 0, 1, d);
+    gsl_matrix_set(m, 1, 0, d);
+}
+
+void DBG::hamitonian_cal(gsl_matrix *m, double x) {
+    gsl_matrix_set(m, 0, 0, 6e-4);
+    gsl_matrix_set(m, 1, 1, -6e-4);
+    double h, z = 10, c = 0.9, b = 0.1;
+    if (x < -z) {
+        h = b * exp(c * (x - z)) + b * (2 - exp(c * (x + z)));
+    } else if (x < z) {
+        h = b * exp(c * (x - z)) + b * exp(-c * (x + z));
+    } else {
+        h = b * exp(-c * (x + z)) + b * (2 - exp(-c * (x - z)));
+    }
+    gsl_matrix_set(m, 1, 0, h);
+    gsl_matrix_set(m, 0, 1, h);
+}
+
+double DBG::sigma_x(double k) {
+    return 3 * sqrt(2) / 2;
+}
+
+double DBG::sigma_p(double k) {
+    return 1 / 3.0 / sqrt(2);
+}
+
+void DAG::d_hamitonian_cal(gsl_matrix *m, double x) {
+    gsl_matrix_set(m, 0, 0, 0);
+    gsl_matrix_set(m, 1, 1, 0);
+    double d, b = 0.1, c = 0.9, z = 4;
+    if (x < -z) {
+        d = -b * c * exp(c * (x - z)) + b * c * exp(c * (x + z));
+    } else if (x < z) {
+        d = -b * c * exp(c * (x - z)) + b * c * exp(-c * (x + z));
+    } else {
+        d = -b * c * exp(-c * (x - z)) + b * c * exp(-c * (x + z));
+    }
+    gsl_matrix_set(m, 0, 1, d);
+    gsl_matrix_set(m, 1, 0, d);
+}
+
+void DAG::hamitonian_cal(gsl_matrix *m, double x) {
+    gsl_matrix_set(m, 0, 0, 6e-4);
+    gsl_matrix_set(m, 1, 1, -6e-4);
+    double h, b = 0.1, c = 0.9, z = 4;
+    if (x < -z) {
+        h = -b * exp(c * (x - z)) + b * exp(c * (x + z));
+    } else if (x < z) {
+        h = -b * exp(c * (x - z)) - b * exp(-c * (x + z)) + 2 * b;
+    } else {
+        h = b * exp(-c * (x - z)) - b * exp(-c * (x + z));
+    }
+    gsl_matrix_set(m, 0, 1, h);
+    gsl_matrix_set(m, 1, 0, h);
+}
+
+double DAG::sigma_x(double k) {
+    return 2;
+}
+
+double DAG::sigma_p(double k) {
+    return 0.25;
+}
+
+void DRN::d_hamitonian_cal(gsl_matrix *m, double x) {
+    gsl_matrix_set(m, 0, 0, 0);
+    gsl_matrix_set(m, 1, 1, 0);
+    double d = 0.03 * (-2 * 3.2 * ((x - 2) * exp(-3.2 * (x - 2) * (x - 2)) + (x + 2) * exp(-3.2 * (x + 2) * (x + 2))));
+    gsl_matrix_set(m, 0, 1, d);
+    gsl_matrix_set(m, 1, 0, d);
+}
+
+void DRN::hamitonian_cal(gsl_matrix *m, double x) {
+    gsl_matrix_set(m, 0, 0, 0);
+    gsl_matrix_set(m, 1, 1, 0.01);
+    double h = 0.03 * (exp(-3.2 * (x - 2) * (x - 2)) + exp(-3.2 * (x + 2) * (x + 2)));
+    gsl_matrix_set(m, 0, 1, h);
+    gsl_matrix_set(m, 1, 0, h);
+}
+
+double DRN::sigma_x(double k) {
+    return 0.5;
+}
+
+double DRN::sigma_p(double k) {
+    return 1.0;
 }

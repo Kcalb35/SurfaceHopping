@@ -63,6 +63,8 @@ static const char *SHMethodName[]{
         "PC-BCSH"
 };
 
+void phase_correction(gsl_vector *ref, gsl_vector *t);
+
 double integral(gsl_vector *left, gsl_matrix *op, gsl_vector *right, gsl_vector *wb);
 
 

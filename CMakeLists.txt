@@ -35,7 +35,7 @@ target_link_libraries(SHLib PUBLIC gsl.a gslcblas.a log)
 
 # target MF lib
 add_library(MFLib STATIC
-        src/MF.cpp
+        src/MFMath.cpp
         )
 target_include_directories(MFLib PUBLIC ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(MFLib PUBLIC gsl.a gslcblas.a log)

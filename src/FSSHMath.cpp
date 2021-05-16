@@ -14,6 +14,13 @@
 #include <iomanip>
 
 
+void phase_correction(gsl_vector *ref, gsl_vector *t) {
+    if (gsl_vector_get(t, 0) * gsl_vector_get(ref, 0) < 0 ||
+        gsl_vector_get(t, 1) * gsl_vector_get(ref, 1) < 0) {
+        gsl_vector_scale(t, -1);
+    }
+}
+
 void cal_momenta(const double e[], const double mass, const int state, const double v_active, double p[]) {
     double p_active = v_active * mass;
     p[state] = p_active;

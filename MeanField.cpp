@@ -1,4 +1,4 @@
-#include "MF.h"
+#include "MFMath.h"
 #include "easylogging++.h"
 #include "ModelBase.h"
 #include <random>
@@ -34,7 +34,10 @@ int main(int argc, char **argv) {
     SAC sac;
     DAC dac;
     ECR ecr;
-    NumericalModel *models[3]{&sac, &dac, &ecr};
+    DBG dbg;
+    DAG dag;
+    DRN drn;
+    NumericalModel *models[6]{&sac, &dac, &ecr, &dbg, &dag, &drn};
     map<string, MFMethod> map{
             {"EMF",    EMF},
             {"BCMF_s", BCMF_s},
@@ -42,7 +45,6 @@ int main(int argc, char **argv) {
     };
     random_device rd;
     mt19937 gen(rd());
-    double l = -10, r = 10;
     vector<double> momenta_all;
 
     // parse configure file
@@ -54,9 +56,6 @@ int main(int argc, char **argv) {
     parse_toml(shared, runtime_conf);
     ofstream file(runtime_conf.save_path);
     omp_set_num_threads(runtime_conf.cores);
-    if (runtime_conf.model == 3) {
-        l = -20;
-    }
 
     if (!data.contains("single") && !data.contains("serial") && !data.contains("multi")) {
         LOG(ERROR) << "please input correct runtime settings";
@@ -85,29 +84,40 @@ int main(int argc, char **argv) {
     }
     sort(momenta_all.begin(), momenta_all.end());
 
+    LOG(INFO) << runtime_conf.method << (runtime_conf.norm ? " norm" : "") << " cores:" << runtime_conf.cores;
+    auto model = models[runtime_conf.model - 1];
     for (auto &k: momenta_all) {
         LOG(INFO) << "start " << k;
         double result[4]{0, 0, 0, 0};
-        auto tmp = new double[runtime_conf.count][4];
-        normal_distribution<double> distribution(k, k / 20);
+        auto tmp = new double[runtime_conf.count][5];
+        double l = model->x0 - 3 * model->sigma_x(k);
+        double r = -l;
+        normal_distribution<double> distribution_p(k, model->sigma_p(k));
+        normal_distribution<double> distribution_x(l, model->sigma_x(k));
 #pragma omp parallel for
         for (int i = 0; i < runtime_conf.count; ++i) {
-            double k1 = runtime_conf.norm ? distribution(gen) : k;
-            run_single_MF(models[runtime_conf.model - 1], k1, runtime_conf.state, runtime_conf.dt,
-                          map[runtime_conf.method], tmp[i], r, l, runtime_conf.debug);
+            double k1 = runtime_conf.norm ? distribution_p(gen) : k;
+            double x1 = runtime_conf.norm ? distribution_x(gen) : l;
+            tmp[i][4] = run_single_MF(models[runtime_conf.model - 1], k1, runtime_conf.state, runtime_conf.dt,
+                                      map[runtime_conf.method], tmp[i], x1, l, r, runtime_conf.debug);
         }
+        int count = 0;
         for (int i = 0; i < runtime_conf.count; ++i) {
-            for (int j = 0; j < 4; ++j) {
-                result[j] += tmp[i][j];
+            if (!tmp[i][4]) {
+                for (int j = 0; j < 4; ++j) {
+                    result[j] += tmp[i][j];
+                }
+                count++;
             }
         }
         delete[] tmp;
         for (int i = 0; i < 4; ++i)
-            result[i] /= runtime_conf.count;
+            result[i] /= count;
         file << k;
         for (int i = 0; i < 4; ++i)
             file << ' ' << result[i];
         file << endl;
+        LOG(INFO) << "finish timeout:" << 1.0 - 1.0 * count / runtime_conf.count;
     }
 }
 
