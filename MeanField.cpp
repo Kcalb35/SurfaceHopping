@@ -20,6 +20,7 @@ struct Config {
     bool norm;
     bool debug;
     string save_path;
+    int w_cnt;
 };
 
 
@@ -86,6 +87,7 @@ int main(int argc, char **argv) {
 
     LOG(INFO) << runtime_conf.method << (runtime_conf.norm ? " norm" : "") << " cores:" << runtime_conf.cores;
     auto model = models[runtime_conf.model - 1];
+    auto method = map[runtime_conf.method];
     for (auto &k: momenta_all) {
         LOG(INFO) << "start " << k;
         double result[4]{0, 0, 0, 0};
@@ -98,8 +100,13 @@ int main(int argc, char **argv) {
         for (int i = 0; i < runtime_conf.count; ++i) {
             double k1 = runtime_conf.norm ? distribution_p(gen) : k;
             double x1 = runtime_conf.norm ? distribution_x(gen) : l;
-            tmp[i][4] = run_single_MF(models[runtime_conf.model - 1], k1, runtime_conf.state, runtime_conf.dt,
-                                      map[runtime_conf.method], tmp[i], x1, l, r, runtime_conf.debug);
+            if (method == EMF || method == BCMF_s)
+                tmp[i][4] = run_single_MF(model, k1, runtime_conf.state, runtime_conf.dt, method, tmp[i], x1, l, r,
+                                          runtime_conf.debug);
+            else if (method == BCMF_w) {
+                tmp[i][4] = run_BCMF_w(model, k1, runtime_conf.state, runtime_conf.dt, tmp[i], x1, l, r, runtime_conf.w_cnt,
+                           runtime_conf.debug);
+            }
         }
         int count = 0;
         for (int i = 0; i < runtime_conf.count; ++i) {
@@ -131,4 +138,5 @@ void parse_toml(toml::basic_value<toml::discard_comments, unordered_map, vector>
     conf.norm = toml::find<bool>(data, "norm");
     conf.debug = toml::find<bool>(data, "debug");
     conf.save_path = toml::find<string>(data, "save_path");
+    conf.w_cnt = toml::find<int>(data, "w_count");
 }
