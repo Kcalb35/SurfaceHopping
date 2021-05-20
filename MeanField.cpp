@@ -21,6 +21,8 @@ struct Config {
     bool debug;
     string save_path;
     int w_cnt;
+    double timeout_w;
+    double timeout_t;
 };
 
 
@@ -85,7 +87,9 @@ int main(int argc, char **argv) {
     }
     sort(momenta_all.begin(), momenta_all.end());
 
-    LOG(INFO) << runtime_conf.method << (runtime_conf.norm ? " norm" : "") << " cores:" << runtime_conf.cores;
+    LOG(INFO) << runtime_conf.method << " model:" << runtime_conf.model << (runtime_conf.norm ? " norm" : "")
+              << " count:" << runtime_conf.count;
+    LOG(INFO) << "save:" << runtime_conf.save_path << " cores:" << runtime_conf.cores;
     auto model = models[runtime_conf.model - 1];
     auto method = map[runtime_conf.method];
     for (auto &k: momenta_all) {
@@ -104,8 +108,9 @@ int main(int argc, char **argv) {
                 tmp[i][4] = run_single_MF(model, k1, runtime_conf.state, runtime_conf.dt, method, tmp[i], x1, l, r,
                                           runtime_conf.debug);
             else if (method == BCMF_w) {
-                tmp[i][4] = run_BCMF_w(model, k1, runtime_conf.state, runtime_conf.dt, tmp[i], x1, l, r, runtime_conf.w_cnt,
-                           runtime_conf.debug);
+                tmp[i][4] = run_BCMF_w(model, k1, runtime_conf.state, runtime_conf.dt, tmp[i], x1, l, r,
+                                       runtime_conf.w_cnt, runtime_conf.debug, runtime_conf.timeout_w,
+                                       runtime_conf.timeout_t);
             }
         }
         int count = 0;
@@ -124,8 +129,10 @@ int main(int argc, char **argv) {
         for (int i = 0; i < 4; ++i)
             file << ' ' << result[i];
         file << endl;
-        LOG(INFO) << "finish timeout:" << 1.0 - 1.0 * count / runtime_conf.count;
+        if (count != runtime_conf.count)
+            LOG(INFO) << "finish timeout:" << 1.0 - 1.0 * count / runtime_conf.count;
     }
+    LOG(INFO) << "finish";
 }
 
 void parse_toml(toml::basic_value<toml::discard_comments, unordered_map, vector> &data, Config &conf) {
@@ -139,4 +146,6 @@ void parse_toml(toml::basic_value<toml::discard_comments, unordered_map, vector>
     conf.debug = toml::find<bool>(data, "debug");
     conf.save_path = toml::find<string>(data, "save_path");
     conf.w_cnt = toml::find<int>(data, "w_count");
+    conf.timeout_w = toml::find<double>(data, "timeout_w");
+    conf.timeout_t = toml::find<double>(data, "timeout_t");
 }

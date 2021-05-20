@@ -18,12 +18,10 @@ struct weighted_trajectory {
     double kinetic_energy;
     double potential_energy;
     double weight;
-    double lifetime;
     bool finish;
     double e_total;
     double e[2]{};
     double p_prev[2]{};
-    int turn;
     gsl_vector *t[2];
     gsl_matrix_complex *density;
 
@@ -34,7 +32,6 @@ struct weighted_trajectory {
         density = gsl_matrix_complex_calloc(2, 2);
         for (int i = 0; i < 2; ++i)
             t[i] = gsl_vector_alloc(2);
-        lifetime = 0;
         finish = false;
     }
 
@@ -67,9 +64,10 @@ struct weighted_trajectory {
 
     void log() {
         LOG(INFO) << "move Ep:" << potential_energy << " Ek:" << kinetic_energy << " E:"
-                  << potential_energy + kinetic_energy << " x:" << x << " v:" << velocity;
-        LOG(INFO) << "population sum:"
-                  << GSL_REAL(gsl_matrix_complex_get(density, 0, 0)) + GSL_REAL(gsl_matrix_complex_get(density, 1, 1));
+                  << potential_energy + kinetic_energy << " x:" << x << " v:" << velocity << " finish:"
+                  << (finish ? "yes" : "no") << " pop.:"
+                  << GSL_REAL(gsl_matrix_complex_get(density, 0, 0)) + GSL_REAL(gsl_matrix_complex_get(density, 1, 1))
+                  << " w:" << weight;
     }
 };
 
@@ -79,8 +77,7 @@ int run_single_MF(NumericalModel *model, const double start_momenta, const int s
 
 int run_BCMF_w(NumericalModel *model, const double start_momenta, const int start_state, const double dt,
                double result[], const double start_x, const double left, const double right,
-               const int max_num_trajectories,
-               bool debug);
+               const int max_num_trajectories, bool debug, double timeout_w, double timeout_t);
 
 
 #endif //SH_MFMATH_H

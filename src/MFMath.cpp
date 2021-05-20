@@ -5,7 +5,7 @@
 #include "gsl/gsl_eigen.h"
 #include "gsl/gsl_complex_math.h"
 #include "ModelBase.h"
-#include "stdexcept"
+#include <stdexcept>
 #include "gslExtra.h"
 #include "easylogging++.h"
 
@@ -99,7 +99,6 @@ double calculate_group_population(gsl_matrix_complex *density, std::vector<int> 
 void update_split_trajectory(weighted_trajectory &tra, weighted_trajectory *split_traj, std::vector<int> group,
                              double population) {
     split_traj->e_total = tra.e_total;
-    split_traj->turn = tra.turn;
     split_traj->weight = tra.weight * population;
     gsl_matrix_complex_memcpy(split_traj->density, tra.density);
     for (int i = 0; i < 2; ++i) {
@@ -142,7 +141,7 @@ int run_single_MF(NumericalModel *model, const double start_momenta, const int s
     double e[2]{0, 0};
     double p[2]{0, 0}, p_next[2]{0, 0}, p_prev[2]{0, 0};
     double p_avg_next;
-    std::vector<int> RG{}, NRG{}, energy_allowed{};
+    std::vector<int> RG{}, NRG{}, EAG{};
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> distrib(0, 1.0);
@@ -215,9 +214,8 @@ int run_single_MF(NumericalModel *model, const double start_momenta, const int s
         gsl_matrix_complex_scale(tmp_density_grad[1], gsl_complex{dt / 3, 0});
         gsl_matrix_complex_scale(tmp_density_grad[2], gsl_complex{dt / 3, 0});
         gsl_matrix_complex_scale(tmp_density_grad[3], gsl_complex{dt / 6, 0});
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < 4; ++i)
             gsl_matrix_complex_add(density, tmp_density_grad[i]);
-        }
 
         // update energy
         model->hamitonian_cal(hamitonian, atom.x);
@@ -237,8 +235,9 @@ int run_single_MF(NumericalModel *model, const double start_momenta, const int s
             // calculate momenta of next dt
             RG.clear();
             NRG.clear();
-            energy_allowed.clear();
+            EAG.clear();
             model->d_hamitonian_cal(hamitonian, atom.x);
+            // category all the groups
             for (int i = 0; i < 2; ++i) { ;
                 p_next[i] = p[i] - integral(t[i], hamitonian, t[i], wb_dot_vec) * dt;
                 if (p_next[i] * p[i] < 0 || p_next[i] * atom.velocity < 0) {
@@ -246,18 +245,17 @@ int run_single_MF(NumericalModel *model, const double start_momenta, const int s
                 } else {
                     NRG.push_back(i);
                 }
+                if (e[i] <= e_total)
+                    EAG.push_back(i);
             }
             p_avg_next =
                     atom.mass * (atom.velocity + avg_acceleration(density, hamitonian, t, wb_dot_vec, atom.mass) * dt);
-            // todo 当能量不守衡，真实波包的动量设置为0，怎么判断反射和透射
+            double p_RG = calculate_group_population(density, RG);
+            double p_NRG = calculate_group_population(density, NRG);
+            double p_EAG = calculate_group_population(density, EAG);
             if (!RG.empty()) {
                 // actual wave packet reflection
                 gsl_matrix_complex_memcpy(tmp_density, density);
-                double p_RG = 0, p_NRG = 0;
-                for (int &i:RG)
-                    p_RG += GSL_REAL(gsl_matrix_complex_get(density, i, i));
-                for (int &i:NRG)
-                    p_NRG += GSL_REAL(gsl_matrix_complex_get(density, i, i));
                 if (distrib(gen) < p_RG)
                     // choose reflection group
                     wave_packet_correction(density, tmp_density, RG, NRG, e, e_total, p_RG, p_NRG, p_prev);
@@ -266,14 +264,7 @@ int run_single_MF(NumericalModel *model, const double start_momenta, const int s
                     wave_packet_correction(density, tmp_density, NRG, RG, e, e_total, p_NRG, p_RG, p_prev);
             } else if (RG.empty() && p_avg_next * atom.velocity < 0) {
                 // effective wave packet reflection
-                double population = 0;
-                for (int i = 0; i < 2; ++i) {
-                    if (e[i] <= e_total) {
-                        energy_allowed.push_back(i);
-                        population += GSL_REAL(gsl_matrix_complex_get(density, i, i));
-                    }
-                }
-                reset_wave_functions(energy_allowed, population, density);
+                reset_wave_functions(EAG, p_EAG, density);
             }
             tmp_e = avg_energy(density, e);
             double tmp = 2 * (atom.potential_energy - tmp_e) / atom.mass / atom.velocity / atom.velocity;
@@ -302,6 +293,14 @@ int run_single_MF(NumericalModel *model, const double start_momenta, const int s
             LOG(INFO) << "timeout k:" << start_momenta;
             return 1;
         }
+    }
+    if (method == BCMF_s) {
+        EAG.clear();
+        for (int i = 0; i < 2; ++i)
+            if (e[i] < e_total)
+                EAG.push_back(i);
+        double population = calculate_group_population(density, EAG);
+        reset_wave_functions(EAG, population, density);
     }
 
     if (atom.velocity > 0) {
@@ -332,10 +331,8 @@ int run_single_MF(NumericalModel *model, const double start_momenta, const int s
 
 int run_BCMF_w(NumericalModel *model, const double start_momenta, const int start_state, const double dt,
                double result[], const double start_x, const double left, const double right,
-               const int max_num_trajectories,
-               bool debug) {
+               const int max_num_trajectories, bool debug, double timeout_w, double timeout_t) {
     std::vector<weighted_trajectory *> trajectories, splited, deleted;
-    trajectories.reserve(max_num_trajectories);
 
     // pre allocate
     gsl_matrix_complex *tmp_density = gsl_matrix_complex_alloc(2, 2);
@@ -377,6 +374,7 @@ int run_BCMF_w(NumericalModel *model, const double start_momenta, const int star
     traj->e_total = traj->potential_energy + traj->kinetic_energy;
     trajectories.push_back(std::move(traj));
     bool finish_all = false;
+    int turn = 0;
     while (!finish_all) {
         finish_all = true;
         for (auto &ptr : trajectories) {
@@ -430,11 +428,6 @@ int run_BCMF_w(NumericalModel *model, const double start_momenta, const int star
                 }
                 tra.kinetic_energy = 0.5 * tra.mass * tra.velocity * tra.velocity;
                 tra.potential_energy = avg_energy(tra.density, tra.e);
-                if (debug && ++tra.turn % int(10 / dt) == 0) {
-                    tra.log();
-                    log_matrix(tra.density, 2, 2, "density");
-                    LOG(INFO) << tra.weight;
-                }
 
                 // calculate momenta on other PES
                 calculate_momenta(tra.velocity, tra.potential_energy, tra.e, p, tra.mass);
@@ -469,7 +462,8 @@ int run_BCMF_w(NumericalModel *model, const double start_momenta, const int star
                     }
                 }
                 p_avg_next = tra.mass * (tra.velocity +
-                                         avg_acceleration(tra.density, hamitonian, tra.t, wb_dot_vec, tra.mass) * dt);
+                                         avg_acceleration(tra.density, hamitonian, tra.t, wb_dot_vec, tra.mass) *
+                                         dt);
                 // check reflection
                 if (!RG.empty()) {
                     // split trajectories
@@ -481,12 +475,12 @@ int run_BCMF_w(NumericalModel *model, const double start_momenta, const int star
                         // no split, choose larger population group
                         if (p_NRG > p_RG)
                             // no reflection group
-                            wave_packet_correction(tra.density, tmp_density, NRG, NRG, tra.e, tra.e_total, p_NRG, p_RG,
-                                                   tra.p_prev);
+                            wave_packet_correction(tra.density, tmp_density, NRG, NRG, tra.e, tra.e_total, p_NRG,
+                                                   p_RG, tra.p_prev);
                         else
                             // reflection group
-                            wave_packet_correction(tra.density, tmp_density, RG, NRG, tra.e, tra.e_total, p_RG, p_NRG,
-                                                   tra.p_prev);
+                            wave_packet_correction(tra.density, tmp_density, RG, NRG, tra.e, tra.e_total, p_RG,
+                                                   p_NRG, tra.p_prev);
                     } else {
 
                         // split
@@ -506,11 +500,11 @@ int run_BCMF_w(NumericalModel *model, const double start_momenta, const int star
                             deleted.push_back(ptr);
                             continue;
                         } else if (RG_energy_allowed_flag || RG_energy_allowed_prev) {
-                            wave_packet_correction(tra.density, tmp_density, RG, NRG, tra.e, tra.e_total, p_RG, p_NRG,
-                                                   tra.p_prev);
+                            wave_packet_correction(tra.density, tmp_density, RG, NRG, tra.e, tra.e_total, p_RG,
+                                                   p_NRG, tra.p_prev);
                         } else if (NRG_energy_allowed_flag || NRG_energy_allowed_prev) {
-                            wave_packet_correction(tra.density, tmp_density, NRG, RG, tra.e, tra.e_total, p_NRG, p_RG,
-                                                   tra.p_prev);
+                            wave_packet_correction(tra.density, tmp_density, NRG, RG, tra.e, tra.e_total, p_NRG,
+                                                   p_RG, tra.p_prev);
                         }
                     }
                 } else if (RG.empty() && p_avg_next * tra.velocity < 0) {
@@ -541,30 +535,50 @@ int run_BCMF_w(NumericalModel *model, const double start_momenta, const int star
         }
         deleted.clear();
         // check all finish
-        for (auto &tra:trajectories)
-            finish_all = finish_all && tra->is_finish(left, right);
+        for (auto &tra : trajectories)
+            finish_all = tra->is_finish(left, right) && finish_all;
         // move splited trajectories
         for (auto &ptr : splited) {
             trajectories.push_back(ptr);
-            finish_all = finish_all && ptr->is_finish(left, right);
+            finish_all = ptr->is_finish(left, right) && finish_all;
         }
         splited.clear();
+        if (++turn * dt > timeout_t) {
+            break;
+        }
+        if (debug && turn % static_cast<int>(10 / dt) == 0) {
+            LOG(INFO) << "time:" << turn * dt << " trajs:" << trajectories.size() << "/" << max_num_trajectories;
+            for (auto &ptr:trajectories) {
+                ptr->log();
+            }
+            LOG(INFO) << "---------------------------------";
+        }
     }
     double population[4];
     for (int i = 0; i < 4; ++i) {
         result[i] = 0;
     }
     for (auto &tra:trajectories) {
+        if (!tra->finish) {
+            // ignore trajectory weight < timeout_w
+            if (tra->weight > timeout_w) {
+                LOG(INFO) << "timeout k:" << start_momenta << " w:" << tra->weight <<
+                          " trajs:" << trajectories.size() << "/" << max_num_trajectories;
+                return 1;
+            } else {
+                continue;
+            }
+        }
+        EAG.clear();
+        for (int i = 0; i < 2; ++i)
+            if (tra->e[i] <= tra->e_total)
+                EAG.push_back(i);
+        reset_wave_functions(EAG, calculate_group_population(tra->density, EAG), tra->density);
         tra->calculate_population(population);
         for (int i = 0; i < 4; ++i) {
             result[i] += population[i];
         }
-//        delete tra;
-    }
-    //fordebug
-    double pop = 0;
-    for (int i = 0; i < 4; ++i) {
-        pop += result[i];
+        delete tra;
     }
 
     // free
