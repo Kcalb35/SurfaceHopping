@@ -9,7 +9,7 @@ if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif ()
 
 project(SH)
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
 find_package(OpenMP)
 if (OPENMP_FOUND)
@@ -24,21 +24,28 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/lib/toml11)
 add_library(log ${PROJECT_SOURCE_DIR}/lib/easyloggingpp/src/easylogging++.cc)
 target_include_directories(log PUBLIC ${PROJECT_SOURCE_DIR}/lib/easyloggingpp/src)
 
+#target model base lib
+add_library(ModelBase STATIC
+        src/ModelBase.cpp)
+target_include_directories(ModelBase PUBLIC include)
+target_link_libraries(ModelBase PUBLIC gsl.a)
+
 # target SH lib
 add_library(SHLib STATIC
-        src/FSSHMath.cpp
-        src/gslExtra.cpp src/ModelBase.cpp)
+        src/FSSHMath.cpp)
 target_include_directories(SHLib
         PUBLIC
-        ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(SHLib PUBLIC gsl.a gslcblas.a log)
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/lib/QUtil/include)
+target_link_libraries(SHLib PUBLIC ModelBase gsl.a gslcblas.a log fmt.a)
 
 # target MF lib
 add_library(MFLib STATIC
-        src/MFMath.cpp
-        )
-target_include_directories(MFLib PUBLIC ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(MFLib PUBLIC gsl.a gslcblas.a log)
+        src/MFMath.cpp)
+target_include_directories(MFLib PUBLIC ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/lib/QUtil/include)
+target_link_libraries(MFLib PUBLIC gsl.a gslcblas.a log fmt.a)
+
 
 # target executable
 add_executable(${PROJECT_NAME} SurfaceHopping.cpp)

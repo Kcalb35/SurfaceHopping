@@ -88,19 +88,20 @@ int main(int argc, char **argv) {
     sort(momenta_all.begin(), momenta_all.end());
 
     LOG(INFO) << runtime_conf.method << " model:" << runtime_conf.model << (runtime_conf.norm ? " norm" : "")
-              << " count:" << runtime_conf.count;
+              << " count:" << runtime_conf.count << " dt:" << runtime_conf.dt;
     LOG(INFO) << "save:" << runtime_conf.save_path << " cores:" << runtime_conf.cores;
     auto model = models[runtime_conf.model - 1];
     auto method = map[runtime_conf.method];
     for (auto &k: momenta_all) {
-        LOG(INFO) << "start " << k;
+        LOG(INFO) << "start:" << k;
         double result[4]{0, 0, 0, 0};
         auto tmp = new double[runtime_conf.count][5];
         double l = model->x0 - 3 * model->sigma_x(k);
         double r = -l;
         normal_distribution<double> distribution_p(k, model->sigma_p(k));
         normal_distribution<double> distribution_x(l, model->sigma_x(k));
-#pragma omp parallel for
+        int cnt = 0;
+#pragma omp parallel for schedule(dynamic)
         for (int i = 0; i < runtime_conf.count; ++i) {
             double k1 = runtime_conf.norm ? distribution_p(gen) : k;
             double x1 = runtime_conf.norm ? distribution_x(gen) : l;
@@ -112,6 +113,9 @@ int main(int argc, char **argv) {
                                        runtime_conf.w_cnt, runtime_conf.debug, runtime_conf.timeout_w,
                                        runtime_conf.timeout_t);
             }
+#pragma omp atomic
+            cnt++;
+            LOG(INFO) << "complete:" << cnt << '/' << runtime_conf.count;
         }
         int count = 0;
         for (int i = 0; i < runtime_conf.count; ++i) {

@@ -6,8 +6,11 @@
 #include "gsl/gsl_complex_math.h"
 #include "ModelBase.h"
 #include <stdexcept>
-#include "gslExtra.h"
 #include "easylogging++.h"
+#include "gslextra.hpp"
+
+using QUtil::gslextra::sign;
+using QUtil::gslextra::integral;
 
 double avg_energy(const gsl_matrix_complex *density, const double e[]) {
     double result = 0;
@@ -47,7 +50,7 @@ void calculate_momenta(const double v, const double Ep, const double e[], double
     for (int j = 0; j < 2; ++j) {
         double v_square = v * v + 2 * (Ep - e[j]) / mass;
         if (v_square < 0) p[j] = 0;
-        else p[j] = sgn(v) * sqrt(v_square) * mass;
+        else p[j] = sign(v) * sqrt(v_square) * mass;
     }
 }
 
@@ -285,7 +288,8 @@ int run_single_MF(NumericalModel *model, const double start_momenta, const int s
                 LOG(INFO) << GSL_REAL(gsl_matrix_complex_get(density, 0, 0)) +
                              GSL_REAL(gsl_matrix_complex_get(density, 1, 1)) << " acc:" << a[3];
                 LOG(INFO) << p[0] << ' ' << p[1];
-                log_matrix(density, 2, 2, "density");
+                LOG(INFO) << "density matrix";
+                LOG(INFO) << QUtil::gslextra::format_matrix(density);
             }
         }
         if (log_cnt * dt > 1e7) {
@@ -443,27 +447,26 @@ int run_BCMF_w(NumericalModel *model, const double start_momenta, const int star
                     p_next[i] = p[i] - integral(tra.t[i], hamitonian, tra.t[i], wb_dot_vec);
                     if (p_next[i] * p[i] < 0 || p_next[i] * tra.velocity < 0) {
                         RG.push_back(i);
-                        if (tra.e[i] <= tra.e_total) {
+                        if (tra.e[i] <= tra.e_total || tra.p_prev[i] != 0) {
                             EAG.push_back(i);
                         } else {
                             EFG.push_back(i);
                             RG_energy_allowed_flag = false;
                         }
-                        RG_energy_allowed_prev = RG_energy_allowed_prev && (tra.p_prev[i] != 0);
+                        RG_energy_allowed_prev = (tra.p_prev[i] != 0) && RG_energy_allowed_prev;
                     } else {
                         NRG.push_back(i);
-                        if (tra.e[i] <= tra.e_total) {
+                        if (tra.e[i] <= tra.e_total || tra.p_prev[i] != 0) {
                             EAG.push_back(i);
                         } else {
                             EFG.push_back(i);
                             NRG_energy_allowed_flag = false;
                         }
-                        NRG_energy_allowed_prev = NRG_energy_allowed_prev && (tra.p_prev[i] != 0);
+                        NRG_energy_allowed_prev = (tra.p_prev[i] != 0) && NRG_energy_allowed_prev;
                     }
                 }
                 p_avg_next = tra.mass * (tra.velocity +
-                                         avg_acceleration(tra.density, hamitonian, tra.t, wb_dot_vec, tra.mass) *
-                                         dt);
+                                         avg_acceleration(tra.density, hamitonian, tra.t, wb_dot_vec, tra.mass) * dt);
                 // check reflection
                 if (!RG.empty()) {
                     // split trajectories
@@ -482,7 +485,6 @@ int run_BCMF_w(NumericalModel *model, const double start_momenta, const int star
                             wave_packet_correction(tra.density, tmp_density, RG, NRG, tra.e, tra.e_total, p_RG,
                                                    p_NRG, tra.p_prev);
                     } else {
-
                         // split
                         if ((RG_energy_allowed_prev || RG_energy_allowed_flag) &&
                             (NRG_energy_allowed_prev || NRG_energy_allowed_flag)) {
@@ -546,7 +548,7 @@ int run_BCMF_w(NumericalModel *model, const double start_momenta, const int star
         if (++turn * dt > timeout_t) {
             break;
         }
-        if (debug && turn % static_cast<int>(10 / dt) == 0) {
+        if (debug && turn % static_cast<int>(1 / dt) == 0) {
             LOG(INFO) << "time:" << turn * dt << " trajs:" << trajectories.size() << "/" << max_num_trajectories;
             for (auto &ptr:trajectories) {
                 ptr->log();

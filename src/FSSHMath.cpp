@@ -2,7 +2,6 @@
 // Created by grass on 4/15/21.
 //
 #include "FSSHMath.h"
-#include "gslExtra.h"
 #include "easylogging++.h"
 #include <cmath>
 #include <random>
@@ -11,8 +10,11 @@
 #include "gsl/gsl_complex_math.h"
 #include "ModelBase.h"
 #include <stdexcept>
-#include <iomanip>
+#include "gslextra.hpp"
+#include "fmt/core.h"
 
+using QUtil::gslextra::sign;
+using QUtil::gslextra::integral;
 
 void phase_correction(gsl_vector *ref, gsl_vector *t) {
     if (gsl_vector_get(t, 0) * gsl_vector_get(ref, 0) < 0 ||
@@ -27,7 +29,7 @@ void cal_momenta(const double e[], const double mass, const int state, const dou
     if (p_active * p_active / 2 / mass + e[state] < e[1 - state]) {
         p[1 - state] = 0;
     } else {
-        p[1 - state] = sgn(p_active) * sqrt(p_active * p_active + 2 * mass * (e[state] - e[1 - state]));
+        p[1 - state] = sign(p_active) * sqrt(p_active * p_active + 2 * mass * (e[state] - e[1 - state]));
     }
 }
 
@@ -35,14 +37,6 @@ void set_hamitonian_z_by_pc(gsl_matrix_complex *hamitonian_z, const double p[], 
     gsl_matrix_complex_set_zero(hamitonian_z);
     gsl_matrix_complex_set(hamitonian_z, 0, 0, gsl_complex{-p[state] * p[0] / mass, 0});
     gsl_matrix_complex_set(hamitonian_z, 1, 1, gsl_complex{-p[state] * p[1] / mass, 0});
-}
-
-double integral(gsl_vector *left, gsl_matrix *op, gsl_vector *right, gsl_vector *wb) {
-    gsl_vector_set_zero(wb);
-    gsl_blas_dgemv(CblasNoTrans, 1, op, right, 0, wb);
-    double result;
-    gsl_blas_ddot(left, wb, &result);
-    return result;
 }
 
 void diagonalize(gsl_matrix *hamitonian, double &e1, double &e2, gsl_vector *s1, gsl_vector *s2,
@@ -271,7 +265,7 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
                 if (debug) atom.log("jump_before");
                 atom.kinetic_energy -= de;
                 atom.potential_energy = e[1 - k];
-                atom.velocity = (sgn(atom.velocity)) * sqrt(2 * atom.kinetic_energy / atom.mass);
+                atom.velocity = (sign(atom.velocity)) * sqrt(2 * atom.kinetic_energy / atom.mass);
                 atom.state = 1 - k;
                 if (debug) {
                     LOG(INFO) << "jump " << zeta << '/' << prob;
@@ -345,8 +339,8 @@ run_single_trajectory(NumericalModel *num_model, AnalyticModel *ana_model, int s
 }
 
 void Atom::log(const std::string &s) const {
-    LOG(INFO) << s << std::setprecision(10) << " Ep:" << potential_energy << " Ek:" << kinetic_energy << " E:"
-              << potential_energy + kinetic_energy << " x:" << x << " state:" << state << " v:" << velocity;
+    LOG(INFO) << fmt::format("{} Ep:{:.10f} Ek:{:.10f} E:{:.10f} x:{:.10f} state:{} v:{.10f}", s, potential_energy,
+                             kinetic_energy, potential_energy + kinetic_energy, x, state, velocity);
 }
 
 Atom::Atom(double mass) : mass(mass),

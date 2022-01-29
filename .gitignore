@@ -1,6 +1,7 @@
 # dirs
 .idea
 build*
+rbuild/
 bin/*
 lib/*
 data/*
@@ -9,3 +10,6 @@ data/*
 *.log
 SH
 *.dat
+
+# scripts
+*.sh

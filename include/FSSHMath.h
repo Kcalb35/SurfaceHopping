@@ -65,9 +65,6 @@ static const char *SHMethodName[]{
 
 void phase_correction(gsl_vector *ref, gsl_vector *t);
 
-double integral(gsl_vector *left, gsl_matrix *op, gsl_vector *right, gsl_vector *wb);
-
-
 void
 density_matrix_grad_cal(gsl_matrix_complex *density_grad, gsl_matrix_complex *density, gsl_matrix_complex *hamitonian,
                         double v, gsl_matrix *nac);

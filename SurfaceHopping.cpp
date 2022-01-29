@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
         double result[5]{0, 0, 0, 0, 0};
         auto tmp = new int[runtime_conf.count][5]{};
         normal_distribution<double> distribution(k, k / 20);
-#pragma omp parallel for
+#pragma omp parallel for schedule(dynamic)
         for (int i = 0; i < runtime_conf.count; ++i) {
             double k1 = runtime_conf.norm ? distribution(gen) : k;
             auto pos = run_single_trajectory(models[runtime_conf.model - 1], nullptr, runtime_conf.state, k1,
